@@ -85,15 +85,7 @@ public class FpsCounter : MonoBehaviour
     }
 
     /// <summary>true si se presionó F1 esta trama, funcione el proyecto con el Input Manager viejo o con el Input System nuevo.</summary>
-    static bool F1Pressed()
-    {
-#if ENABLE_INPUT_SYSTEM
-        var kb = Keyboard.current;
-        return kb != null && kb.f1Key.wasPressedThisFrame;
-#else
-        return Input.GetKeyDown(KeyCode.F1);
-#endif
-    }
+    static bool F1Pressed() => GameInput.DebugTogglePressed();
 
     void Update()
     {

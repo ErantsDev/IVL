@@ -103,61 +103,15 @@ public class PlayerController : MonoBehaviour
 
     // ---------- Entrada (compatible con Input System nuevo y el antiguo) ----------
 
-    static Vector2 ReadMove()
-    {
-#if ENABLE_INPUT_SYSTEM
-        var k = Keyboard.current;
-        if (k == null) return Vector2.zero;
-        float x = (k.dKey.isPressed || k.rightArrowKey.isPressed ? 1 : 0) - (k.aKey.isPressed || k.leftArrowKey.isPressed ? 1 : 0);
-        float y = (k.wKey.isPressed || k.upArrowKey.isPressed ? 1 : 0) - (k.sKey.isPressed || k.downArrowKey.isPressed ? 1 : 0);
-        return new Vector2(x, y);
-#else
-        return new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
-#endif
-    }
+    static Vector2 ReadMove() => GameInput.Move();
 
-    static Vector2 ReadLookDelta()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Mouse.current != null ? Mouse.current.delta.ReadValue() : Vector2.zero;
-#else
-        return new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y")) * 10f;
-#endif
-    }
+    static Vector2 ReadLookDelta() => GameInput.LookDelta();
 
-    static bool ReadSprint()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && Keyboard.current.leftShiftKey.isPressed;
-#else
-        return Input.GetKey(KeyCode.LeftShift);
-#endif
-    }
+    static bool ReadSprint() => GameInput.SprintHeld();
 
-    static bool ReadJumpPressed()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame;
-#else
-        return Input.GetKeyDown(KeyCode.Space);
-#endif
-    }
+    static bool ReadJumpPressed() => GameInput.JumpPressed();
 
-    static bool ReadEscapePressed()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame;
-#else
-        return Input.GetKeyDown(KeyCode.Escape);
-#endif
-    }
+    static bool ReadEscapePressed() => GameInput.PausePressed();
 
-    static bool ReadClickPressed()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame;
-#else
-        return Input.GetMouseButtonDown(0);
-#endif
-    }
+    static bool ReadClickPressed() => GameInput.PrimaryPressed();
 }

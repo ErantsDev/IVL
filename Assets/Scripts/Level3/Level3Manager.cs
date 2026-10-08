@@ -971,23 +971,9 @@ public class Level3Manager : MonoBehaviour, ILevelController
             mixLabel.text = mixing ? "Resuspendiendo... " + Mathf.RoundToInt(sample.Mix * 100f) + " %" : "Clic derecho + mover: resuspender";
     }
 
-    static bool RightHeld()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Mouse.current != null && Mouse.current.rightButton.isPressed;
-#else
-        return Input.GetMouseButton(1);
-#endif
-    }
+    static bool RightHeld() => GameInput.SecondaryHeld();
 
-    static Vector2 MouseDelta()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Mouse.current != null ? Mouse.current.delta.ReadValue() : Vector2.zero;
-#else
-        return new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y")) * 10f;
-#endif
-    }
+    static Vector2 MouseDelta() => GameInput.LookDelta();
 
     // ------------------------------------------------------------------
     //  Guía (objetivo, lista de pasos y marcador)

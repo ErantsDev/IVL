@@ -611,23 +611,9 @@ public class RabbitController : Interactable
         if (petLookOwner != null) petLookOwner.lookEnabled = !on;
     }
 
-    static bool PetButtonHeld()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Mouse.current != null && Mouse.current.rightButton.isPressed;
-#else
-        return Input.GetMouseButton(1);
-#endif
-    }
+    static bool PetButtonHeld() => GameInput.SecondaryHeld();
 
-    static Vector2 ReadMouseDelta()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Mouse.current != null ? Mouse.current.delta.ReadValue() : Vector2.zero;
-#else
-        return new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y")) * 10f;
-#endif
-    }
+    static Vector2 ReadMouseDelta() => GameInput.LookDelta();
 
     /// <summary>
     /// Sigue a la cámara con un pequeño resorte (posición y rotación) en vez de ir pegado

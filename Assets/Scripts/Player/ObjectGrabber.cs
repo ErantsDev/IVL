@@ -382,49 +382,13 @@ public class ObjectGrabber : MonoBehaviour
 
     // ---------- Entrada ----------
 
-    static bool GrabPressed()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame)
-            || (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame && Cursor.lockState == CursorLockMode.Locked);
-#else
-        return Input.GetKeyDown(KeyCode.E) || (Input.GetMouseButtonDown(0) && Cursor.lockState == CursorLockMode.Locked);
-#endif
-    }
+    static bool GrabPressed() => GameInput.InteractPressed() || (GameInput.PrimaryPressed() && Cursor.lockState == CursorLockMode.Locked);
 
-    static bool SecondaryPressed()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame;
-#else
-        return Input.GetKeyDown(KeyCode.R);
-#endif
-    }
+    static bool SecondaryPressed() => GameInput.AltInteractPressed();
 
-    static bool RotatePressed()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Mouse.current != null && Mouse.current.rightButton.isPressed;
-#else
-        return Input.GetMouseButton(1);
-#endif
-    }
+    static bool RotatePressed() => GameInput.SecondaryHeld();
 
-    static Vector2 ReadLookDelta()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Mouse.current != null ? Mouse.current.delta.ReadValue() : Vector2.zero;
-#else
-        return new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y")) * 10f;
-#endif
-    }
+    static Vector2 ReadLookDelta() => GameInput.LookDelta();
 
-    static float ReadScroll()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Mouse.current != null ? Mouse.current.scroll.ReadValue().y : 0f;
-#else
-        return Input.mouseScrollDelta.y;
-#endif
-    }
+    static float ReadScroll() => GameInput.Scroll();
 }

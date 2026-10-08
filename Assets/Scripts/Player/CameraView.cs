@@ -168,12 +168,5 @@ public class CameraView : MonoBehaviour
         return new Ray(origin, c.forward);
     }
 
-    static bool TogglePressed()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && Keyboard.current.vKey.wasPressedThisFrame;
-#else
-        return Input.GetKeyDown(KeyCode.V);
-#endif
-    }
+    static bool TogglePressed() => GameInput.ToggleViewPressed();
 }

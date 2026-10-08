@@ -274,17 +274,9 @@ public class StudentFormUI : MonoBehaviour
 
     void HandleKeys()
     {
-#if ENABLE_INPUT_SYSTEM
-        var k = Keyboard.current;
-        if (k == null) return;
-        bool tab = k.tabKey.wasPressedThisFrame;
-        bool back = k.leftShiftKey.isPressed || k.rightShiftKey.isPressed;
-        bool enter = k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame;
-#else
-        bool tab = Input.GetKeyDown(KeyCode.Tab);
-        bool back = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-        bool enter = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
-#endif
+        bool tab = GameInput.NextFieldPressed();
+        bool back = GameInput.ShiftHeld();
+        bool enter = GameInput.ConfirmPressed();
         if (tab)
         {
             var fields = new[] { nameInput, idInput, emailInput };

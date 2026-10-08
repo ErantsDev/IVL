@@ -251,12 +251,5 @@ public class GameFlow : MonoBehaviour
         Cursor.visible = !locked;
     }
 
-    static bool EscapePressed()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame;
-#else
-        return Input.GetKeyDown(KeyCode.Escape);
-#endif
-    }
+    static bool EscapePressed() => GameInput.PausePressed();
 }

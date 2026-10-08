@@ -801,32 +801,11 @@ public class DorsalMinigame : MonoBehaviour
 
     static bool PointerOverUI() => EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
 
-    static Vector2 MousePosition()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
-#else
-        return Input.mousePosition;
-#endif
-    }
+    static Vector2 MousePosition() => GameInput.PointerPosition();
 
-    static bool MouseHeld()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Mouse.current != null && Mouse.current.leftButton.isPressed;
-#else
-        return Input.GetMouseButton(0);
-#endif
-    }
+    static bool MouseHeld() => GameInput.PrimaryHeld();
 
-    static bool ConfirmPressed()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && (Keyboard.current.enterKey.wasPressedThisFrame || Keyboard.current.numpadEnterKey.wasPressedThisFrame);
-#else
-        return Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
-#endif
-    }
+    static bool ConfirmPressed() => GameInput.ConfirmPressed();
 
     // ------------------------------------------------------------------
     //  Para pruebas automáticas

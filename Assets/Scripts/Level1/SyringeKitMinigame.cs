@@ -564,32 +564,11 @@ public class SyringeKitMinigame : MonoBehaviour
 
     // ---------- Entrada ----------
 
-    static Vector2 MousePosition()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
-#else
-        return Input.mousePosition;
-#endif
-    }
+    static Vector2 MousePosition() => GameInput.PointerPosition();
 
-    static bool ClickPressed()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame;
-#else
-        return Input.GetMouseButtonDown(0);
-#endif
-    }
+    static bool ClickPressed() => GameInput.PrimaryPressed();
 
-    static bool CancelPressed()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && Keyboard.current.qKey.wasPressedThisFrame;
-#else
-        return Input.GetKeyDown(KeyCode.Q);
-#endif
-    }
+    static bool CancelPressed() => GameInput.CancelPressed();
 
     static bool PointerOverUI() => EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
 

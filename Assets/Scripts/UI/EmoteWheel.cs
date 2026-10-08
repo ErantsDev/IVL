@@ -281,57 +281,15 @@ public class EmoteWheel : MonoBehaviour
     //  Entrada
     // ------------------------------------------------------------------
 
-    static bool OpenPressed()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && Keyboard.current.bKey.wasPressedThisFrame;
-#else
-        return Input.GetKeyDown(KeyCode.B);
-#endif
-    }
+    static bool OpenPressed() => GameInput.EmotePressed();
 
-    static bool OpenHeld()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Keyboard.current != null && Keyboard.current.bKey.isPressed;
-#else
-        return Input.GetKey(KeyCode.B);
-#endif
-    }
+    static bool OpenHeld() => GameInput.EmoteHeld();
 
-    static bool ClickPressed()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame;
-#else
-        return Input.GetMouseButtonDown(0);
-#endif
-    }
+    static bool ClickPressed() => GameInput.PrimaryPressed();
 
-    static Vector2 MouseDelta()
-    {
-#if ENABLE_INPUT_SYSTEM
-        return Mouse.current != null ? Mouse.current.delta.ReadValue() : Vector2.zero;
-#else
-        return new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y")) * 10f;
-#endif
-    }
+    static Vector2 MouseDelta() => GameInput.LookDelta();
 
-    static int NumberKey()
-    {
-#if ENABLE_INPUT_SYSTEM
-        var k = Keyboard.current;
-        if (k == null) return -1;
-        if (k.digit1Key.wasPressedThisFrame) return 0;
-        if (k.digit2Key.wasPressedThisFrame) return 1;
-        if (k.digit3Key.wasPressedThisFrame) return 2;
-        if (k.digit4Key.wasPressedThisFrame) return 3;
-        return -1;
-#else
-        for (int i = 0; i < 4; i++) if (Input.GetKeyDown(KeyCode.Alpha1 + i)) return i;
-        return -1;
-#endif
-    }
+    static int NumberKey() => GameInput.NumberKeyPressed();
 
     // ---------- Para pruebas automáticas ----------
     public void TestOpen() => TryOpen();
