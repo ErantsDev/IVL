@@ -298,11 +298,30 @@ public class ObjectGrabber : MonoBehaviour
 
     void OnGUI()
     {
+        if (VRMode.Active) return; // en las gafas la mira y el aviso los dibuja VRHud
         if (!showCrosshair || !GameFlow.GameplayInputAllowed || EmoteWheel.IsOpen) return; // la rueda de emotes tiene su propia interfaz
         float cx = Mathf.Round(Screen.width / 2f), cy = Mathf.Round(Screen.height / 2f);
         float uiScale = Mathf.Max(0.75f, Screen.height / 1080f);
         DrawCrosshair(cx, cy, uiScale);
 
+        string prompt = BuildPrompt();
+
+        if (prompt != null)
+        {
+            var style = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 17, richText = true };
+            var size = style.CalcSize(new GUIContent(prompt));
+            var rect = new Rect(cx - size.x * 0.5f - 12f, cy + 32f * uiScale, size.x + 24f, size.y + 8f);
+            var prev = GUI.color;
+            GUI.color = new Color(0f, 0f, 0f, 0.5f);
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+            GUI.color = prev;
+            GUI.Label(rect, prompt, style);
+        }
+    }
+
+    /// <summary>Texto del aviso de acción para lo que se está apuntando o sosteniendo (o null).</summary>
+    public string BuildPrompt()
+    {
         string prompt = null;
         string ePrompt = aimedInteractable != null ? aimedInteractable.PromptFor(held, 0) : null;
         string rPrompt = aimedInteractable != null ? aimedInteractable.PromptFor(held, 1) : null;
@@ -337,18 +356,7 @@ public class ObjectGrabber : MonoBehaviour
 
         if (rPrompt != null) prompt = (prompt != null ? prompt + "\n" : "") + "R: " + rPrompt;
         if (!string.IsNullOrEmpty(info)) prompt = (prompt != null ? prompt + "\n" : "") + "<size=15><color=#CFE3FF>" + info + "</color></size>";
-
-        if (prompt != null)
-        {
-            var style = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 17, richText = true };
-            var size = style.CalcSize(new GUIContent(prompt));
-            var rect = new Rect(cx - size.x * 0.5f - 12f, cy + 32f * uiScale, size.x + 24f, size.y + 8f);
-            var prev = GUI.color;
-            GUI.color = new Color(0f, 0f, 0f, 0.5f);
-            GUI.DrawTexture(rect, Texture2D.whiteTexture);
-            GUI.color = prev;
-            GUI.Label(rect, prompt, style);
-        }
+        return prompt;
     }
 
     /// <summary>

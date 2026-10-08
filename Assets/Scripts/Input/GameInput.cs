@@ -7,9 +7,9 @@ using UnityEngine.InputSystem;
 /// Punto único de entrada del juego. Todos los scripts preguntan aquí por las acciones
 /// (moverse, agarrar, confirmar...) en lugar de leer el teclado o el mouse directamente.
 ///
-/// Etapa 1: sólo existe la versión de PC (teclado + mouse), copiada tal cual de los métodos
-/// que antes tenía cada script, así que el comportamiento en computadora no cambia.
-/// En la etapa de VR se agregará aquí la lectura de los controles de las gafas.
+/// En PC lee teclado y mouse exactamente como lo hacía cada script antes.
+/// Con las gafas (<see cref="VRMode.Active"/>, sólo Android) responde con los controles de
+/// la PICO a través de <see cref="VRInput"/>; en PC esa rama nunca se ejecuta.
 /// </summary>
 public static class GameInput
 {
@@ -20,6 +20,7 @@ public static class GameInput
     /// <summary>WASD / flechas. x = lateral, y = adelante.</summary>
     public static Vector2 Move()
     {
+        if (VRMode.Active) return VRInput.Move();
 #if ENABLE_INPUT_SYSTEM
         var k = Keyboard.current;
         if (k == null) return Vector2.zero;
@@ -34,6 +35,7 @@ public static class GameInput
     /// <summary>Movimiento del mouse de esta trama (mirar, rotar objetos, invertir el tubo, rueda de emotes).</summary>
     public static Vector2 LookDelta()
     {
+        if (VRMode.Active) return VRInput.LookDelta();
 #if ENABLE_INPUT_SYSTEM
         return Mouse.current != null ? Mouse.current.delta.ReadValue() : Vector2.zero;
 #else
@@ -44,6 +46,7 @@ public static class GameInput
     /// <summary>Shift izquierdo mantenido.</summary>
     public static bool SprintHeld()
     {
+        if (VRMode.Active) return VRInput.SprintHeld();
 #if ENABLE_INPUT_SYSTEM
         return Keyboard.current != null && Keyboard.current.leftShiftKey.isPressed;
 #else
@@ -54,6 +57,7 @@ public static class GameInput
     /// <summary>Espacio.</summary>
     public static bool JumpPressed()
     {
+        if (VRMode.Active) return VRInput.JumpPressed();
 #if ENABLE_INPUT_SYSTEM
         return Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame;
 #else
@@ -64,6 +68,7 @@ public static class GameInput
     /// <summary>V: alternar primera / tercera persona.</summary>
     public static bool ToggleViewPressed()
     {
+        if (VRMode.Active) return VRInput.ToggleViewPressed();
 #if ENABLE_INPUT_SYSTEM
         return Keyboard.current != null && Keyboard.current.vKey.wasPressedThisFrame;
 #else
@@ -78,6 +83,7 @@ public static class GameInput
     /// <summary>Clic izquierdo presionado esta trama.</summary>
     public static bool PrimaryPressed()
     {
+        if (VRMode.Active) return VRInput.PrimaryPressed();
 #if ENABLE_INPUT_SYSTEM
         return Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame;
 #else
@@ -88,6 +94,7 @@ public static class GameInput
     /// <summary>Clic izquierdo mantenido.</summary>
     public static bool PrimaryHeld()
     {
+        if (VRMode.Active) return VRInput.PrimaryHeld();
 #if ENABLE_INPUT_SYSTEM
         return Mouse.current != null && Mouse.current.leftButton.isPressed;
 #else
@@ -98,6 +105,7 @@ public static class GameInput
     /// <summary>Clic derecho mantenido (rotar objeto, acariciar al conejo, invertir el tubo).</summary>
     public static bool SecondaryHeld()
     {
+        if (VRMode.Active) return VRInput.SecondaryHeld();
 #if ENABLE_INPUT_SYSTEM
         return Mouse.current != null && Mouse.current.rightButton.isPressed;
 #else
@@ -108,6 +116,7 @@ public static class GameInput
     /// <summary>Posición del puntero en pixeles de pantalla (minijuegos).</summary>
     public static Vector2 PointerPosition()
     {
+        if (VRMode.Active) return VRInput.PointerPosition();
 #if ENABLE_INPUT_SYSTEM
         return Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
 #else
@@ -118,6 +127,7 @@ public static class GameInput
     /// <summary>Rueda del mouse (acercar / alejar el objeto sostenido).</summary>
     public static float Scroll()
     {
+        if (VRMode.Active) return VRInput.Scroll();
 #if ENABLE_INPUT_SYSTEM
         return Mouse.current != null ? Mouse.current.scroll.ReadValue().y : 0f;
 #else
@@ -132,6 +142,7 @@ public static class GameInput
     /// <summary>E: agarrar / soltar / acción 0 de un Interactable.</summary>
     public static bool InteractPressed()
     {
+        if (VRMode.Active) return VRInput.InteractPressed();
 #if ENABLE_INPUT_SYSTEM
         return Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame;
 #else
@@ -142,6 +153,7 @@ public static class GameInput
     /// <summary>R: acción 1 de un Interactable.</summary>
     public static bool AltInteractPressed()
     {
+        if (VRMode.Active) return VRInput.AltInteractPressed();
 #if ENABLE_INPUT_SYSTEM
         return Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame;
 #else
@@ -152,6 +164,7 @@ public static class GameInput
     /// <summary>Esc: pausa / liberar el cursor.</summary>
     public static bool PausePressed()
     {
+        if (VRMode.Active) return VRInput.PausePressed();
 #if ENABLE_INPUT_SYSTEM
         return Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame;
 #else
@@ -162,6 +175,7 @@ public static class GameInput
     /// <summary>Enter / Enter del teclado numérico.</summary>
     public static bool ConfirmPressed()
     {
+        if (VRMode.Active) return VRInput.ConfirmPressed();
 #if ENABLE_INPUT_SYSTEM
         return Keyboard.current != null && (Keyboard.current.enterKey.wasPressedThisFrame || Keyboard.current.numpadEnterKey.wasPressedThisFrame);
 #else
@@ -172,6 +186,7 @@ public static class GameInput
     /// <summary>Q: cancelar / salir del minijuego de la jeringa.</summary>
     public static bool CancelPressed()
     {
+        if (VRMode.Active) return VRInput.CancelPressed();
 #if ENABLE_INPUT_SYSTEM
         return Keyboard.current != null && Keyboard.current.qKey.wasPressedThisFrame;
 #else
@@ -186,6 +201,7 @@ public static class GameInput
     /// <summary>B presionada esta trama.</summary>
     public static bool EmotePressed()
     {
+        if (VRMode.Active) return VRInput.EmotePressed();
 #if ENABLE_INPUT_SYSTEM
         return Keyboard.current != null && Keyboard.current.bKey.wasPressedThisFrame;
 #else
@@ -196,6 +212,7 @@ public static class GameInput
     /// <summary>B mantenida.</summary>
     public static bool EmoteHeld()
     {
+        if (VRMode.Active) return VRInput.EmoteHeld();
 #if ENABLE_INPUT_SYSTEM
         return Keyboard.current != null && Keyboard.current.bKey.isPressed;
 #else
@@ -206,6 +223,7 @@ public static class GameInput
     /// <summary>Teclas 1–4 presionadas esta trama: devuelve 0–3, o -1 si ninguna.</summary>
     public static int NumberKeyPressed()
     {
+        if (VRMode.Active) return VRInput.NumberKeyPressed();
 #if ENABLE_INPUT_SYSTEM
         var k = Keyboard.current;
         if (k == null) return -1;
@@ -227,6 +245,7 @@ public static class GameInput
     /// <summary>Tab presionado esta trama.</summary>
     public static bool NextFieldPressed()
     {
+        if (VRMode.Active) return VRInput.NextFieldPressed();
 #if ENABLE_INPUT_SYSTEM
         return Keyboard.current != null && Keyboard.current.tabKey.wasPressedThisFrame;
 #else
@@ -237,6 +256,7 @@ public static class GameInput
     /// <summary>Cualquier Shift mantenido (Shift+Tab = campo anterior).</summary>
     public static bool ShiftHeld()
     {
+        if (VRMode.Active) return VRInput.ShiftHeld();
 #if ENABLE_INPUT_SYSTEM
         var k = Keyboard.current;
         return k != null && (k.leftShiftKey.isPressed || k.rightShiftKey.isPressed);
@@ -248,6 +268,7 @@ public static class GameInput
     /// <summary>F1: mostrar / ocultar el contador de FPS.</summary>
     public static bool DebugTogglePressed()
     {
+        if (VRMode.Active) return VRInput.DebugTogglePressed();
 #if ENABLE_INPUT_SYSTEM
         var kb = Keyboard.current;
         return kb != null && kb.f1Key.wasPressedThisFrame;

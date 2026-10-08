@@ -11,11 +11,15 @@ using UnityEngine.SceneManagement;
 ///    que tenían y la cámara recibe <see cref="VRHeadPose"/> (sigue la cabeza).
 ///  - Se apaga el recorrido automático de la cámara del menú (mover la vista sin que el usuario
 ///    se mueva marea en VR).
-///  - PROVISIONAL: como los menús todavía no se ven ni se pueden usar en VR, se entra directo
+///  - Jugador: giro por pasos (VRSnapTurn). Escena: paneles flotantes y mira (VRHud).
+///  - PROVISIONAL: como los menús todavía no se pueden usar en VR (falta el láser), se entra directo
 ///    al nivel en el modo de <see cref="GameSession.Mode"/> (educativo por defecto).
 /// </summary>
+[DefaultExecutionOrder(-1000)] // lee los controles antes que cualquier otro script
 public class VRBootstrap : MonoBehaviour
 {
+    bool vrReady;
+
     [Tooltip("Entrar directo al nivel al estar en el menú (mientras no haya menús en VR).")]
     public bool autoStart = true;
 
@@ -40,8 +44,14 @@ public class VRBootstrap : MonoBehaviour
         if (!VRMode.Active) { Destroy(gameObject); yield break; }
 
         Debug.Log("[VR] Gafas detectadas: activando modo VR.");
+        vrReady = true;
         SceneManager.sceneLoaded += OnSceneLoaded;
         yield return SetupScene();
+    }
+
+    void Update()
+    {
+        if (vrReady) VRInput.Sample();
     }
 
     void OnDestroy() => SceneManager.sceneLoaded -= OnSceneLoaded;
@@ -61,7 +71,13 @@ public class VRBootstrap : MonoBehaviour
         }
 
         foreach (var pc in FindObjectsByType<PlayerController>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
             if (pc.cameraTransform != null) AttachHead(pc.cameraTransform);
+            if (pc.GetComponent<VRSnapTurn>() == null) pc.gameObject.AddComponent<VRSnapTurn>();
+        }
+
+        // Paneles flotantes, mira y avisos (un objeto por escena: los Canvas son de la escena).
+        if (FindAnyObjectByType<VRHud>() == null) new GameObject("VRHud").AddComponent<VRHud>();
 
         if (autoStart && flow != null && flow.CurrentState == GameFlow.State.Menu)
             flow.StartGame(GameSession.Mode);
@@ -83,5 +99,8 @@ public class VRBootstrap : MonoBehaviour
         cam.localPosition = Vector3.zero;
         cam.localRotation = Quaternion.identity;
         cam.gameObject.AddComponent<VRHeadPose>();
+        var c = cam.GetComponent<Camera>();
+        if (c != null) c.cullingMask |= 1 << 5; // capa UI: los paneles flotantes
+
     }
 }

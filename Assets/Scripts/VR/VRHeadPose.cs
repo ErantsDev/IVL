@@ -13,9 +13,23 @@ public class VRHeadPose : MonoBehaviour
 {
     bool hasBaseline;
     Vector3 baseline;
+    Camera cam;
 
-    void OnEnable() => Application.onBeforeRender += Apply;
-    void OnDisable() => Application.onBeforeRender -= Apply;
+    /// <summary>La cabeza que se está usando ahora (cámara del jugador o del menú).</summary>
+    public static VRHeadPose Current { get; private set; }
+    public Camera Cam => cam != null ? cam : (cam = GetComponent<Camera>());
+
+    void OnEnable()
+    {
+        Current = this;
+        Application.onBeforeRender += Apply;
+    }
+
+    void OnDisable()
+    {
+        Application.onBeforeRender -= Apply;
+        if (Current == this) Current = null;
+    }
 
     // En Update para que los scripts que apuntan con la cámara (agarrar, espejo) usen la pose actual,
     // y otra vez justo antes de dibujar para la menor latencia posible.
