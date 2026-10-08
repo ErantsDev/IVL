@@ -26,7 +26,7 @@ namespace Pico.Platform.Editor
 
         public void OnPreprocessBuild(BuildReport report)
         {
-            string configAppID = PXR_PlatformSetting.Instance.appID.Trim();
+            string configAppID = (PXR_PlatformSetting.Instance.appID ?? "").Trim(); // IVL: appID es null en una instancia recién creada
             if (string.IsNullOrWhiteSpace(configAppID))
             {
                 Debug.LogWarning("appID is not configured");
