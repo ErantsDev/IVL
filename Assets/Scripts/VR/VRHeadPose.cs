@@ -18,6 +18,8 @@ public class VRHeadPose : MonoBehaviour
     /// <summary>La cabeza que se está usando ahora (cámara del jugador o del menú).</summary>
     public static VRHeadPose Current { get; private set; }
     public Camera Cam => cam != null ? cam : (cam = GetComponent<Camera>());
+    /// <summary>Posición de la cabeza en la primera lectura: origen común de cabeza y controles.</summary>
+    public Vector3 Baseline => baseline;
 
     void OnEnable()
     {

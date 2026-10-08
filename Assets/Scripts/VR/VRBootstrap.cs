@@ -98,7 +98,12 @@ public class VRBootstrap : MonoBehaviour
         cam.SetParent(offset, false);
         cam.localPosition = Vector3.zero;
         cam.localRotation = Quaternion.identity;
-        cam.gameObject.AddComponent<VRHeadPose>();
+        var head = cam.gameObject.AddComponent<VRHeadPose>();
+
+        // Los controles, en el mismo espacio que la cabeza: se ven y se mueven con las manos.
+        VRControllerPose.Create(offset, UnityEngine.XR.XRNode.LeftHand, head);
+        VRControllerPose.Create(offset, UnityEngine.XR.XRNode.RightHand, head);
+
         var c = cam.GetComponent<Camera>();
         if (c != null) c.cullingMask |= 1 << 5; // capa UI: los paneles flotantes
 
