@@ -61,6 +61,7 @@ public class PlayerController : MonoBehaviour
 
     void HandleLook()
     {
+        if (VRMode.Active) return; // con gafas la cabeza mueve la cámara (VRHeadPose)
         mouseSensitivity = GameSettings.MouseSensitivity;
         Vector2 delta = ReadLookDelta() * mouseSensitivity;
         transform.Rotate(Vector3.up, delta.x, Space.World);
