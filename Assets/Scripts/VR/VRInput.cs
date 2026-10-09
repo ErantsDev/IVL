@@ -143,6 +143,9 @@ public static class VRInput
     public static bool ShiftHeld() => false;
     public static bool DebugTogglePressed() => false;
 
+    /// <summary>Joystick derecho vertical (-1..1), con zona muerta: acercar / alejar lo que se sostiene.</summary>
+    public static float RightStickY() { Sample(); float y = rNow.stick.y; return Mathf.Abs(y) < Deadzone ? 0f : y; }
+
     /// <summary>Botón X (control izquierdo): traer / regresar el panel del objetivo y materiales.</summary>
     public static bool HudTogglePressed() { Sample(); return lNow.primary && !lPrev.primary; }
 

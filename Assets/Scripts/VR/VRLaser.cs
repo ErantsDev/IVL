@@ -23,7 +23,6 @@ public class VRLaser : MonoBehaviour
     Material dotMat;
     GameObject uiTarget, hoverTarget;
     PointerEventData ped;
-    readonly List<RaycastResult> results = new List<RaycastResult>();
     static readonly RaycastHit[] hits = new RaycastHit[16];
 
     /// <summary>Rayo del control derecho, si existe.</summary>
@@ -137,7 +136,7 @@ public class VRLaser : MonoBehaviour
         Vector3 bestP = default;
         foreach (var c in hud.Panels)
         {
-            if (c == null || !c.isActiveAndEnabled) continue;
+            if (c == null || !c.isActiveAndEnabled || c.gameObject.layer != VRHud.UILayer) continue;
             var rt = (RectTransform)c.transform;
             var plane = new Plane(rt.forward, rt.position);
             if (!plane.Raycast(ray, out float d) || d > bestD) continue;
@@ -148,21 +147,27 @@ public class VRLaser : MonoBehaviour
         }
         if (best == null) { SetHover(null); return float.PositiveInfinity; }
 
-        var gr = best.GetComponent<UnityEngine.UI.GraphicRaycaster>();
-        if (gr != null)
+        // Elemento de interfaz bajo el láser: el de mayor profundidad de dibujo que lo contenga
+        // (lo mismo que hace el GraphicRaycaster, pero sin depender de la cámara de eventos).
+        var cam = head.Cam;
+        Vector2 sp = cam.WorldToScreenPoint(bestP);
+        int bestDepth = -1;
+        var graphics = UnityEngine.UI.GraphicRegistry.GetRaycastableGraphicsForCanvas(best);
+        for (int i = 0; i < graphics.Count; i++)
         {
-            if (ped == null) ped = new PointerEventData(EventSystem.current);
-            ped.Reset();
-            ped.button = PointerEventData.InputButton.Left;
-            ped.position = head.Cam.WorldToScreenPoint(bestP);
-            results.Clear();
-            gr.Raycast(ped, results);
-            if (results.Count > 0)
-            {
-                uiTarget = results[0].gameObject;
-                ped.pointerCurrentRaycast = results[0];
-            }
+            var g = graphics[i];
+            if (g == null || !g.raycastTarget || !g.isActiveAndEnabled || g.depth < 0 || g.canvasRenderer.cull) continue;
+            if (g.depth <= bestDepth) continue;
+            var grt = g.rectTransform;
+            if (!grt.rect.Contains((Vector2)grt.InverseTransformPoint(bestP))) continue;
+            if (!g.Raycast(sp, cam)) continue; // respeta CanvasGroup (blocksRaycasts) y máscaras
+            bestDepth = g.depth;
+            uiTarget = g.gameObject;
         }
+        if (ped == null) ped = new PointerEventData(EventSystem.current);
+        ped.Reset();
+        ped.button = PointerEventData.InputButton.Left;
+        ped.position = sp;
         SetHover(uiTarget);
         // Zona transparente del panel: el láser sigue de largo hacia la escena.
         if (uiTarget == null) return float.PositiveInfinity;

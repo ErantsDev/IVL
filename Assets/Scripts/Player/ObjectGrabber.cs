@@ -55,6 +55,10 @@ public class ObjectGrabber : MonoBehaviour
     [Header("VR")]
     [Tooltip("Con gafas: qué tan adelante del control queda el centro del objeto sostenido (m).")]
     public float vrHoldForward = 0.09f;
+    [Tooltip("Con gafas: distancia al agarrar y límites al acercar / alejar con el joystick derecho (m).")]
+    public float vrHoldDefault = 0.09f, vrHoldMin = 0.05f, vrHoldMax = 1.0f;
+    [Tooltip("Con gafas: velocidad al acercar / alejar con el joystick (m/s).")]
+    public float vrHoldSpeed = 0.8f;
     Quaternion vrHoldRotation = Quaternion.identity;
 
     static readonly RaycastHit[] hitBuffer = new RaycastHit[32];
@@ -188,6 +192,10 @@ public class ObjectGrabber : MonoBehaviour
 
         UpdateRotation();
 
+        // Con gafas: joystick derecho arriba / abajo aleja / acerca lo que se tiene en la mano.
+        if (VRMode.Active && held != null && !held.customCarry)
+            vrHoldForward = Mathf.Clamp(vrHoldForward + VRInput.RightStickY() * vrHoldSpeed * Time.deltaTime, vrHoldMin, vrHoldMax);
+
         float scroll = ReadScroll();
         if (held != null && !held.customCarry && Mathf.Abs(scroll) > 0.01f)
             holdDistance = Mathf.Clamp(holdDistance + Mathf.Sign(scroll) * 0.15f, minHoldDistance, maxHoldDistance);
@@ -267,7 +275,10 @@ public class ObjectGrabber : MonoBehaviour
             g.Body.interpolation = RigidbodyInterpolation.Interpolate;
             holdDistance = Mathf.Clamp(Vector3.Distance(cam.transform.position, g.Body.worldCenterOfMass), minHoldDistance, maxHoldDistance);
             if (VRMode.Active && VRControllerPose.Right != null)
+            {
                 vrHoldRotation = Quaternion.Inverse(VRControllerPose.Right.transform.rotation) * g.Body.rotation;
+                vrHoldForward = vrHoldDefault;
+            }
         }
         g.RaiseGrabbed();
     }

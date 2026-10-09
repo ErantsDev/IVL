@@ -68,6 +68,7 @@ public class AvatarAnimatorDriver : MonoBehaviour
     void Awake()
     {
         anim = GetComponent<Animator>();
+        CacheHandAxes(); // pose de reposo, antes de la primera animación
         var pc = GetComponentInParent<PlayerController>();
         if (pc != null)
         {
@@ -239,6 +240,7 @@ public class AvatarAnimatorDriver : MonoBehaviour
 
     void LateUpdate()
     {
+        if (VRMode.Active && cc != null) { AlignVRWrists(); return; }
         // Después de la animación y el IK: la palma de la mano derecha se apoya sobre el lomo,
         // con los dedos hacia la cola (el humanoide no tiene dedos: basta con girar la mano).
         if (petW <= 0.001f || petRabbit == null || anim == null) return;
@@ -275,8 +277,13 @@ public class AvatarAnimatorDriver : MonoBehaviour
     public float vrBodyTurnDeadzone = 25f;
     [Tooltip("Con gafas: inclinación de la mano respecto al control (grados).")]
     public float vrHandPitch = 25f;
-    [Tooltip("Con gafas: 1 = la muñeca copia el giro del control; 0 = sólo la posición.")]
-    [Range(0f, 1f)] public float vrHandRotationWeight = 1f;
+    [Tooltip("Con gafas: 1 = rotación por IK con la convención humanoide; 0 = sólo posición (la muñeca se alinea en LateUpdate).")]
+    [Range(0f, 1f)] public float vrHandRotationWeight = 0f;
+
+    // Eje del antebrazo en el espacio local de cada mano (de la pose de reposo): con él la mano se
+    // alinea con el control sin depender de cómo esté orientado el esqueleto del modelo.
+    Vector3 rightHandAxis, leftHandAxis;
+    bool handAxesReady;
 
     float vrBodyYaw, vrCrouch;
     bool vrYawInit;
@@ -346,6 +353,43 @@ public class AvatarAnimatorDriver : MonoBehaviour
         VRHand(AvatarIKGoal.RightHand, AvatarIKHint.RightElbow, rightHandW, r != null ? r.transform : null, 1f);
         VRHand(AvatarIKGoal.LeftHand, AvatarIKHint.LeftElbow, leftHandW, l != null ? l.transform : null, -1f);
         petW = 0f;
+    }
+
+    void CacheHandAxes()
+    {
+        if (handAxesReady || anim == null || !anim.isHuman) return;
+        rightHandAxis = AxisOf(HumanBodyBones.RightHand, HumanBodyBones.RightLowerArm);
+        leftHandAxis = AxisOf(HumanBodyBones.LeftHand, HumanBodyBones.LeftLowerArm);
+        handAxesReady = true;
+    }
+
+    Vector3 AxisOf(HumanBodyBones handB, HumanBodyBones lowerB)
+    {
+        var hand = anim.GetBoneTransform(handB);
+        var lower = anim.GetBoneTransform(lowerB);
+        if (hand == null || lower == null) return Vector3.zero;
+        return Quaternion.Inverse(hand.rotation) * (hand.position - lower.position).normalized;
+    }
+
+    /// <summary>
+    /// Con gafas, después del IK: gira cada mano para que siga la dirección del control (los dedos
+    /// hacia donde apunta), conservando el giro natural de la animación.
+    /// </summary>
+    void AlignVRWrists()
+    {
+        if (!handAxesReady) return;
+        AlignWrist(HumanBodyBones.RightHand, rightHandAxis, VRControllerPose.Right, rightHandW);
+        AlignWrist(HumanBodyBones.LeftHand, leftHandAxis, VRControllerPose.Left, leftHandW);
+    }
+
+    void AlignWrist(HumanBodyBones handB, Vector3 axisLocal, VRControllerPose ctrl, float w)
+    {
+        if (ctrl == null || w <= 0.001f || axisLocal == Vector3.zero) return;
+        var hand = anim.GetBoneTransform(handB);
+        if (hand == null) return;
+        Vector3 current = hand.rotation * axisLocal;
+        Vector3 desired = ctrl.transform.rotation * Quaternion.Euler(vrHandPitch, 0f, 0f) * Vector3.forward;
+        hand.rotation = Quaternion.Slerp(Quaternion.identity, Quaternion.FromToRotation(current, desired), w) * hand.rotation;
     }
 
     void SetFoot(AvatarIKGoal goal, AvatarIKHint hint, Vector3 pos, Quaternion rot, float w, float side)
