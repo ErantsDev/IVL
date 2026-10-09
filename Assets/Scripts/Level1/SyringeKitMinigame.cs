@@ -600,7 +600,8 @@ public class SyringeKitMinigame : MonoBehaviour
         Vector3 fwd = Vector3.ProjectOnPlane(head.forward, Vector3.up);
         if (fwd.sqrMagnitude < 1e-4f) fwd = Vector3.ProjectOnPlane(head.up, Vector3.up);
         fwd.Normalize();
-        stage.SetPositionAndRotation(head.position + fwd * 0.5f + Vector3.down * 0.5f, Quaternion.LookRotation(fwd, Vector3.up));
+        // Cerca y abajo (como una mesa): el panel del minijuego queda arriba, sin taparla.
+        stage.SetPositionAndRotation(head.position + fwd * 0.42f + Vector3.down * 0.58f, Quaternion.LookRotation(fwd, Vector3.up));
     }
 
     /// <summary>Con gafas, la etiqueta del elemento apuntado flota sobre él (las de pantalla no aplican).</summary>
@@ -612,7 +613,9 @@ public class SyringeKitMinigame : MonoBehaviour
             go.transform.SetParent(stage, false);
             vrLabel = go.AddComponent<TextMeshPro>();
             if (font != null) vrLabel.font = font;
-            vrLabel.fontSize = 0.35f;
+            vrLabel.fontSize = 0.28f;
+            vrLabel.outlineWidth = 0.2f;
+            vrLabel.outlineColor = new Color32(0, 0, 0, 220);
             vrLabel.alignment = TextAlignmentOptions.Center;
             vrLabel.richText = true;
             vrLabel.rectTransform.sizeDelta = new Vector2(0.5f, 0.12f);

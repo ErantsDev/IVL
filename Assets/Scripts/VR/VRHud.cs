@@ -9,10 +9,10 @@ using UnityEngine.UI;
 ///
 /// Los Canvas "Screen Space - Overlay" no se ven en VR; aquí se pasan a "World Space", en la
 /// capa UI, que dibuja una cámara aparte encima de todo (ninguna pared o mueble los tapa).
-///  - Todos siguen la vista con un pequeño retraso, a una distancia cómoda de lectura.
-///  - HUD del nivel (objetivo, materiales, cronómetro, calma del conejo): el botón X lo manda a la
-///    pared, a un lado del pizarrón (sin taparlo), y otra vez X lo trae a la vista. En la pared se
-///    dibuja con la cámara normal, como un objeto más del salón.
+///  - HUD del nivel (objetivo, materiales, cronómetro, calma del conejo): sigue la vista; el botón X
+///    lo oculta y lo vuelve a mostrar.
+///  - Paneles de minijuegos y menús: se quedan fijos frente al usuario (a la altura de los ojos,
+///    un poco arriba para no tapar la charola o el conejo) y vuelven al frente si se voltea mucho.
 ///  - Los textos que hablan de teclado y mouse se cambian por los botones del control.
 ///  - El contador de FPS se oculta (se encimaba con la lista de materiales).
 /// Además dibuja el aviso de acción ("Gatillo: agarrar...") de ObjectGrabber.
@@ -28,8 +28,27 @@ public class VRHud : MonoBehaviour
     public float hudWidth = 0.95f;
     [Tooltip("Tamaño del lienzo del HUD en VR (px): compacto para que nada se separe ni se encime.")]
     public Vector2 hudCanvasSize = new Vector2(1120f, 760f);
-    [Tooltip("Ancho de un panel de pantalla completa (menús, minijuegos) (m).")]
-    public float frontWidth = 1.3f;
+    [Header("Paneles de minijuegos y menús")]
+    [Tooltip("Lienzo de estos paneles en VR (px): más chico que 1920×1080 para que la letra se vea más grande.")]
+    public Vector2 frontCanvasSize = new Vector2(1440f, 810f);
+    [Tooltip("Ancho del panel (m).")]
+    public float frontWidth = 1.15f;
+    [Tooltip("Distancia del panel a los ojos (m).")]
+    public float frontDistance = 1.0f;
+    [Tooltip("Qué tanto arriba de los ojos queda el centro del panel (m): deja libre la charola / el conejo.")]
+    public float frontRaise = 0.1f;
+    [Tooltip("Grados que hay que voltear para que el panel vuelva al frente.")]
+    public float frontRecenterAngle = 70f;
+
+    class FrontInfo { public bool wasVisible; public float yaw; public Vector3 pos; }
+    readonly Dictionary<Canvas, FrontInfo> front = new Dictionary<Canvas, FrontInfo>();
+
+    static bool AnyActiveChild(Canvas c)
+    {
+        var t = c.transform;
+        for (int i = 0; i < t.childCount; i++) if (t.GetChild(i).gameObject.activeSelf) return true;
+        return false;
+    }
     [Tooltip("Qué tan rápido alcanzan los paneles a la vista.")]
     public float followSpeed = 4f;
     [Tooltip("Los paneles bajan un poco respecto a la línea de la vista (grados).")]
@@ -45,18 +64,8 @@ public class VRHud : MonoBehaviour
 
     /// <summary>Canvas convertidos (el láser los usa para apuntar a botones).</summary>
     public IReadOnlyList<Canvas> Panels => panels;
-    /// <summary>¿El HUD del nivel sigue la vista? (false = está en la pared; botón X).</summary>
+    /// <summary>¿El HUD del nivel está visible? (botón X).</summary>
     public bool HudVisible { get; private set; } = true;
-
-    [Header("HUD en la pared")]
-    [Tooltip("Ancho máximo de la pantalla en la pared (m).")]
-    public float wallMaxWidth = 1.1f;
-    [Tooltip("Separación entre el pizarrón y la pantalla (m).")]
-    public float wallGap = 0.12f;
-    bool hasWall;
-    Vector3 wallPos;
-    Quaternion wallRot;
-    float wallWidth;
 
     readonly List<Canvas> panels = new List<Canvas>();
     readonly HashSet<Canvas> hudPanels = new HashSet<Canvas>();
@@ -112,36 +121,34 @@ public class VRHud : MonoBehaviour
             if (c.worldCamera != head.Cam) c.worldCamera = head.Cam;
             bool hud = hudPanels.Contains(c);
             var rt = (RectTransform)c.transform;
-            if (hud && OnWall)
+            if (hud)
             {
-                SetLayer(c, 0); // en la pared: con la cámara normal (lo tapan los objetos que estén enfrente)
-                SetPose(c, wallPos, wallRot, wallWidth / Mathf.Max(1f, rt.sizeDelta.x));
-                continue;
+                // Ocultar con X sin tocar Canvas.enabled (los scripts del juego lo usan para sus propias reglas).
+                bool hidden = !HudVisible && !ForceHud();
+                float d = distance - Mathf.Clamp(c.sortingOrder, 0, 100) * 0.002f;
+                SetPose(c, h.position + viewRot * Vector3.forward * d, viewRot, (hidden ? 0.0001f : hudWidth) / Mathf.Max(1f, rt.sizeDelta.x));
             }
-            SetLayer(c, UILayer);
-            float width = hud ? hudWidth : frontWidth;
-            // Los de mayor sortingOrder quedan un poco más cerca para dibujarse encima.
-            float d = distance - Mathf.Clamp(c.sortingOrder, 0, 100) * 0.002f;
-            SetPose(c, h.position + viewRot * Vector3.forward * d, viewRot, width / Mathf.Max(1f, rt.sizeDelta.x));
+            else
+            {
+                var inf = front[c];
+                bool visible = c.isActiveAndEnabled && AnyActiveChild(c);
+                float yaw = Quaternion.LookRotation(Vector3.ProjectOnPlane(h.forward, Vector3.up).sqrMagnitude > 1e-4f ? Vector3.ProjectOnPlane(h.forward, Vector3.up) : h.up).eulerAngles.y;
+                if (visible && (!inf.wasVisible || Mathf.Abs(Mathf.DeltaAngle(inf.yaw, yaw)) > frontRecenterAngle))
+                {
+                    inf.yaw = yaw;
+                    inf.pos = h.position + Quaternion.Euler(0f, yaw, 0f) * Vector3.forward * frontDistance + Vector3.up * frontRaise;
+                }
+                inf.wasVisible = visible;
+                Vector3 p = inf.pos - Quaternion.Euler(0f, inf.yaw, 0f) * Vector3.forward * (Mathf.Clamp(c.sortingOrder, 0, 100) * 0.002f);
+                SetPose(c, p, Quaternion.Euler(0f, inf.yaw, 0f), frontWidth / Mathf.Max(1f, rt.sizeDelta.x));
+            }
         }
 
         TranslateTexts();
         UpdatePrompt(head);
     }
 
-    /// <summary>true si el HUD está en la pared (oculto con X, hay pizarrón y no hay pausa ni resultados).</summary>
-    public bool OnWall => !HudVisible && hasWall && !ForceHud();
-
-    readonly Dictionary<Canvas, int> layerOf = new Dictionary<Canvas, int>();
-
-    void SetLayer(Canvas c, int layer)
-    {
-        if (layerOf.TryGetValue(c, out int cur) && cur == layer) return;
-        foreach (var t in c.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = layer;
-        layerOf[c] = layer;
-    }
-
-    /// <summary>En pausa o resultados el HUD viene a la vista aunque se haya mandado a la pared.</summary>
+    /// <summary>En pausa o resultados el HUD se muestra aunque se haya ocultado con X.</summary>
     static bool ForceHud()
     {
         var flow = GameFlow.Instance;
@@ -170,17 +177,15 @@ public class VRHud : MonoBehaviour
             Convert(c, head, c == hudCanvas);
         }
 
-        // Capa (UI = encima de todo; 0 = HUD en la pared) y textos a traducir.
+        // Capa UI (la dibuja la cámara de interfaz encima de todo) y textos a traducir.
         texts.Clear();
         foreach (var c in panels)
         {
             if (c == null) continue;
-            layerOf.Remove(c); // por si el juego agregó elementos nuevos: se vuelve a aplicar la capa
-            SetLayer(c, hudPanels.Contains(c) && OnWall ? 0 : UILayer);
+            foreach (var t in c.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = UILayer;
             c.GetComponentsInChildren(true, tmpBuffer);
             texts.AddRange(tmpBuffer);
         }
-        if (!hasWall && hudPanels.Count > 0) hasWall = FindWallPose(out wallPos, out wallRot, out wallWidth);
     }
 
     readonly List<TMP_Text> tmpBuffer = new List<TMP_Text>();
@@ -194,7 +199,7 @@ public class VRHud : MonoBehaviour
             if (scaler.uiScaleMode == CanvasScaler.ScaleMode.ScaleWithScreenSize) size = scaler.referenceResolution;
             scaler.enabled = false;
         }
-        if (isHud) size = hudCanvasSize;
+        size = isHud ? hudCanvasSize : frontCanvasSize;
 
         c.renderMode = RenderMode.WorldSpace;
         c.worldCamera = head.Cam;
@@ -203,49 +208,8 @@ public class VRHud : MonoBehaviour
         rt.sizeDelta = size;
         panels.Add(c);
         if (isHud) hudPanels.Add(c);
+        else front[c] = new FrontInfo();
     }
-
-    /// <summary>
-    /// Lugar en la pared, a un lado del pizarrón y sin taparlo: del lado con más pared libre, con el
-    /// ancho que quepa. Si no cabe a ningún lado, arriba del pizarrón.
-    /// </summary>
-    bool FindWallPose(out Vector3 pos, out Quaternion rot, out float width)
-    {
-        pos = default; rot = Quaternion.identity; width = wallMaxWidth;
-        var board = GameObject.Find("Salon/Pizarron");
-        if (board == null) board = GameObject.Find("Pizarron");
-        if (board == null) return false;
-        var surface = board.transform.Find("Superficie");
-        Transform bt = board.transform;
-        Vector3 front = -bt.forward;                          // la cara del pizarrón mira hacia su -Z local
-        float half = (surface != null ? surface.lossyScale.x : 2f) * 0.5f + 0.04f; // con marco
-        float centerY = surface != null ? surface.position.y : bt.position.y + 1.7f;
-        Vector3 center = new Vector3(bt.position.x, centerY, bt.position.z) + front * 0.012f;
-        float aspect = hudCanvasSize.y / Mathf.Max(1f, hudCanvasSize.x);
-
-        // Pared libre a cada lado (rayos a la altura del pizarrón, pegados a la pared).
-        Vector3 probe = center + front * 0.05f;
-        float freeR = Free(probe + bt.right * half, bt.right);
-        float freeL = Free(probe - bt.right * half, -bt.right);
-        Vector3 dir = freeR >= freeL ? bt.right : -bt.right;
-        float room = Mathf.Max(freeR, freeL) - wallGap - 0.05f;
-        rot = Quaternion.LookRotation(-front, Vector3.up);
-        if (room >= 0.6f)
-        {
-            width = Mathf.Min(wallMaxWidth, room);
-            pos = center + dir * (half + wallGap + width * 0.5f);
-        }
-        else
-        {
-            width = 0.8f;
-            float top = surface != null ? surface.position.y + surface.lossyScale.y * 0.5f + 0.04f : centerY + 0.6f;
-            pos = new Vector3(center.x, top + wallGap + width * aspect * 0.5f, center.z);
-        }
-        return true;
-    }
-
-    static float Free(Vector3 origin, Vector3 dir) =>
-        Physics.Raycast(origin, dir, out var hit, 6f, ~(1 << UILayer), QueryTriggerInteraction.Ignore) ? hit.distance : 6f;
 
     // ------------------------------------------------------------------
     //  Textos: teclado y mouse -> botones del control

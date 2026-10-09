@@ -23,6 +23,7 @@ public class VRLaser : MonoBehaviour
     Material dotMat;
     GameObject uiTarget, hoverTarget;
     PointerEventData ped;
+    readonly List<Canvas> canvasBuffer = new List<Canvas>();
     static readonly RaycastHit[] hits = new RaycastHit[16];
 
     /// <summary>Rayo del control derecho, si existe.</summary>
@@ -151,18 +152,25 @@ public class VRLaser : MonoBehaviour
         // (lo mismo que hace el GraphicRaycaster, pero sin depender de la cámara de eventos).
         var cam = head.Cam;
         Vector2 sp = cam.WorldToScreenPoint(bestP);
-        int bestDepth = -1;
-        var graphics = UnityEngine.UI.GraphicRegistry.GetRaycastableGraphicsForCanvas(best);
-        for (int i = 0; i < graphics.Count; i++)
+        long bestKey = long.MinValue;
+        best.GetComponentsInChildren(false, canvasBuffer); // incluye Canvas anidados
+        foreach (var sub in canvasBuffer)
         {
-            var g = graphics[i];
-            if (g == null || !g.raycastTarget || !g.isActiveAndEnabled || g.depth < 0 || g.canvasRenderer.cull) continue;
-            if (g.depth <= bestDepth) continue;
-            var grt = g.rectTransform;
-            if (!grt.rect.Contains((Vector2)grt.InverseTransformPoint(bestP))) continue;
-            if (!g.Raycast(sp, cam)) continue; // respeta CanvasGroup (blocksRaycasts) y máscaras
-            bestDepth = g.depth;
-            uiTarget = g.gameObject;
+            var graphics = UnityEngine.UI.GraphicRegistry.GetRaycastableGraphicsForCanvas(sub);
+            for (int i = 0; i < graphics.Count; i++)
+            {
+                var g = graphics[i];
+                if (g == null || !g.raycastTarget || !g.isActiveAndEnabled || g.depth < 0 || g.canvasRenderer.cull) continue;
+                // Lo invisible (p. ej. un aviso con alfa 0) no debe atrapar el láser.
+                if (g.canvasRenderer.GetInheritedAlpha() < 0.02f) continue;
+                long key = ((long)sub.sortingOrder << 32) + g.depth;
+                if (key <= bestKey) continue;
+                var grt = g.rectTransform;
+                if (!grt.rect.Contains((Vector2)grt.InverseTransformPoint(bestP))) continue;
+                if (!g.Raycast(sp, cam)) continue; // respeta CanvasGroup (blocksRaycasts) y máscaras
+                bestKey = key;
+                uiTarget = g.gameObject;
+            }
         }
         if (ped == null) ped = new PointerEventData(EventSystem.current);
         ped.Reset();
