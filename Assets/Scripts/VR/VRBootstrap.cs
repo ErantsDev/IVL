@@ -70,7 +70,7 @@ public class VRBootstrap : MonoBehaviour
             AttachHead(flow.menuCamera.transform, false);
         }
 
-        foreach (var pc in FindObjectsByType<PlayerController>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        foreach (var pc in FindObjectsByType<PlayerController>(FindObjectsInactive.Include))
         {
             if (pc.cameraTransform != null) AttachHead(pc.cameraTransform, true);
             if (pc.GetComponent<VRSnapTurn>() == null) pc.gameObject.AddComponent<VRSnapTurn>();

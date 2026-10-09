@@ -156,7 +156,7 @@ public class VRHud : MonoBehaviour
     void Scan(VRHeadPose head)
     {
         var hudCanvas = GameFlow.Instance != null ? GameFlow.Instance.hudCanvas : null;
-        foreach (var c in FindObjectsByType<Canvas>(FindObjectsSortMode.None))
+        foreach (var c in FindObjectsByType<Canvas>())
         {
             if (c == promptCanvas || !c.isRootCanvas || c.renderMode != RenderMode.ScreenSpaceOverlay) continue;
             if (c.GetComponentInParent<FpsCounter>() != null) { c.enabled = false; continue; }
