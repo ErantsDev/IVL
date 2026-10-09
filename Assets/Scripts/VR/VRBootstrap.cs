@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 
 /// <summary>
@@ -110,7 +111,33 @@ public class VRBootstrap : MonoBehaviour
         }
 
         var c = cam.GetComponent<Camera>();
-        if (c != null) c.cullingMask |= 1 << 5; // capa UI: los paneles flotantes
+        if (c != null) AddUICamera(c);
+    }
+
+    /// <summary>
+    /// Cámara de interfaz apilada (Overlay de URP): dibuja sólo la capa UI, después de la escena y
+    /// con su propio depth, así los paneles nunca quedan tapados por una pared o un mueble.
+    /// </summary>
+    static void AddUICamera(Camera baseCam)
+    {
+        int ui = 1 << VRHud.UILayer;
+        baseCam.cullingMask &= ~ui;
+        var go = new GameObject("CamaraInterfazVR");
+        go.transform.SetParent(baseCam.transform, false);
+        var uiCam = go.AddComponent<Camera>();
+        uiCam.cullingMask = ui;
+        uiCam.clearFlags = CameraClearFlags.Depth;
+        uiCam.nearClipPlane = 0.05f;
+        uiCam.farClipPlane = 30f;
+        uiCam.fieldOfView = baseCam.fieldOfView;
+        uiCam.depth = baseCam.depth; // el espejo busca la cámara de mayor depth: que siga siendo la de los ojos
+        var uiData = uiCam.GetUniversalAdditionalCameraData();
+        uiData.renderType = CameraRenderType.Overlay;
+        uiData.renderPostProcessing = false;
+        uiData.renderShadows = false;
+        var baseData = baseCam.GetUniversalAdditionalCameraData();
+        if (baseData.renderType == CameraRenderType.Base && !baseData.cameraStack.Contains(uiCam))
+            baseData.cameraStack.Add(uiCam);
 
     }
 }

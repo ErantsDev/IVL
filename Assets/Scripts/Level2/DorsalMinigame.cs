@@ -149,9 +149,17 @@ public class DorsalMinigame : MonoBehaviour
         Vector3 center = PatchCenterWorld();
         Vector3 fwd = Vector3.ProjectOnPlane(rabbit.transform.forward, Vector3.up).normalized;
         minigameCamera.transform.SetPositionAndRotation(center + Vector3.up * cameraHeight, Quaternion.LookRotation(Vector3.down, fwd));
-        minigameCamera.gameObject.SetActive(true);
-        playerCam = ObjectGrabber.Instance != null ? ObjectGrabber.Instance.Cam : null;
-        if (playerCam != null) playerCam.enabled = false;
+        if (VRMode.Active)
+        {
+            // Con gafas no se cambia de cámara: se rasura / desinfecta mirando al conejo, con el láser.
+            playerCam = null;
+        }
+        else
+        {
+            minigameCamera.gameObject.SetActive(true);
+            playerCam = ObjectGrabber.Instance != null ? ObjectGrabber.Instance.Cam : null;
+            if (playerCam != null) playerCam.enabled = false;
+        }
 
         EnsureEffects();
 
@@ -181,6 +189,7 @@ public class DorsalMinigame : MonoBehaviour
         if (panel != null) panel.SetActive(false);
         if (minigameCamera != null) minigameCamera.gameObject.SetActive(false);
         if (playerCam != null) playerCam.enabled = true;
+        if (vrBrush != null) vrBrush.gameObject.SetActive(false);
         if (patchCollider != null) patchCollider.enabled = false;
         if (buzz != null) buzz.Stop();
         if (rabbit != null) rabbit.ForcedMood = null;
@@ -234,10 +243,13 @@ public class DorsalMinigame : MonoBehaviour
 
         Vector2 mouse = MousePosition();
         bool pressing = MouseHeld() && !PointerOverUI();
-        Ray ray = minigameCamera.ScreenPointToRay(mouse);
-        bool onPatch = patchCollider.Raycast(ray, out var hit, 2f);
+        Ray laserRay = default;
+        bool vr = VRMode.Active && VRLaser.TryGetRay(out laserRay);
+        Ray ray = vr ? laserRay : minigameCamera.ScreenPointToRay(mouse);
+        bool onPatch = patchCollider.Raycast(ray, out var hit, vr ? 4f : 2f);
 
-        UpdateCursor(mouse, onPatch);
+        if (vr) UpdateVRBrush(onPatch, hit);
+        else UpdateCursor(mouse, onPatch);
 
         if (pressing && onPatch)
         {
@@ -769,6 +781,33 @@ public class DorsalMinigame : MonoBehaviour
         else if (!on && buzz.isPlaying) buzz.Stop();
     }
 
+    Transform vrBrush;
+    Material vrBrushMat;
+
+    /// <summary>Con gafas: un disco sobre el lomo marca dónde y de qué tamaño pasa la rasuradora / gasa.</summary>
+    void UpdateVRBrush(bool onPatch, RaycastHit hit)
+    {
+        if (vrBrush == null)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Destroy(go.GetComponent<Collider>());
+            go.name = "PinceVR";
+            vrBrushMat = new Material(Shader.Find("Sprites/Default"));
+            var r = go.GetComponent<Renderer>();
+            r.sharedMaterial = vrBrushMat;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            vrBrush = go.transform;
+        }
+        bool show = IsActive && !finished && onPatch;
+        vrBrush.gameObject.SetActive(show);
+        if (brushCursor != null) brushCursor.gameObject.SetActive(false);
+        if (!show) return;
+        float d = 2f * (kind == Kind.Shave ? shaveBrushCm : gauzeBrushCm) * 0.01f;
+        vrBrush.SetPositionAndRotation(hit.point + hit.normal * 0.002f, Quaternion.FromToRotation(Vector3.up, hit.normal));
+        vrBrush.localScale = new Vector3(d, 0.001f, d);
+        vrBrushMat.color = MouseHeld() ? new Color(1f, 1f, 1f, 0.55f) : new Color(1f, 1f, 1f, 0.3f);
+    }
+
     void UpdateCursor(Vector2 mouse, bool onPatch)
     {
         if (canvas == null) return;
@@ -799,7 +838,7 @@ public class DorsalMinigame : MonoBehaviour
         }
     }
 
-    static bool PointerOverUI() => EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+    static bool PointerOverUI() => VRMode.Active ? VRLaser.OverUI : EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
 
     static Vector2 MousePosition() => GameInput.PointerPosition();
 

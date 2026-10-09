@@ -89,6 +89,7 @@ public class AvatarAnimatorDriver : MonoBehaviour
         if (anim == null || anim.runtimeAnimatorController == null) return;
         float dt = Time.deltaTime;
         if (dt <= 0f) return; // juego en pausa
+        if (VRMode.Active && cc != null) FollowHeadYaw(dt);
 
         if (cc != null)
         {
@@ -266,13 +267,42 @@ public class AvatarAnimatorDriver : MonoBehaviour
     [Header("VR")]
     [Tooltip("Con gafas: cuánto puede bajar la cadera al agacharse (m).")]
     public float vrMaxCrouch = 0.7f;
+    [Tooltip("Con gafas: lo que baja la cabeza sólo por inclinarla; menos que esto no es agacharse (m).")]
+    public float vrCrouchDeadzone = 0.12f;
     [Tooltip("Con gafas: distancia del control a la muñeca (m), hacia atrás del control.")]
     public float vrWristBack = 0.07f;
+    [Tooltip("Con gafas: grados que puede girar la cabeza antes de que el torso la siga.")]
+    public float vrBodyTurnDeadzone = 25f;
+    [Tooltip("Con gafas: inclinación de la mano respecto al control (grados).")]
+    public float vrHandPitch = 25f;
+    [Tooltip("Con gafas: 1 = la muñeca copia el giro del control; 0 = sólo la posición.")]
+    [Range(0f, 1f)] public float vrHandRotationWeight = 1f;
+
+    float vrBodyYaw, vrCrouch;
+    bool vrYawInit;
+    Quaternion vrBaseLocalRot;
+
+    /// <summary>Con gafas: el torso gira hacia donde mira la cabeza (con un margen), para que los brazos no se crucen.</summary>
+    void FollowHeadYaw(float dt)
+    {
+        var head = VRHeadPose.Current;
+        if (head == null) return;
+        if (!vrYawInit) { vrBaseLocalRot = transform.localRotation; vrYawInit = true; }
+        float headYaw = head.transform.localEulerAngles.y;
+        float diff = Mathf.DeltaAngle(vrBodyYaw, headYaw);
+        if (Mathf.Abs(diff) > vrBodyTurnDeadzone)
+            vrBodyYaw += (diff - Mathf.Sign(diff) * vrBodyTurnDeadzone) * (1f - Mathf.Exp(-8f * dt));
+        transform.localRotation = Quaternion.Euler(0f, vrBodyYaw, 0f) * vrBaseLocalRot;
+
+        // Agacharse: sólo cuando la cabeza baja más de lo que baja al inclinarla.
+        float drop = Mathf.Clamp(-head.transform.localPosition.y - vrCrouchDeadzone, 0f, vrMaxCrouch);
+        vrCrouch = Mathf.Lerp(vrCrouch, drop, 1f - Mathf.Exp(-10f * dt));
+    }
 
     /// <summary>
     /// Sólo con gafas. La cabeza mira hacia donde mira el visor (incluida la inclinación), la cadera
-    /// baja cuando el usuario se agacha (los pies se quedan en el piso y las rodillas se doblan) y
-    /// cada mano va a su control. Así el avatar sigue al usuario, también en el espejo.
+    /// baja cuando el usuario se agacha (los pies se quedan en el piso y las rodillas se doblan hacia
+    /// adelante) y cada mano va a su control, con su giro. Así el avatar sigue al usuario, también en el espejo.
     /// </summary>
     void ApplyVRIK(float dt)
     {
@@ -284,27 +314,28 @@ public class AvatarAnimatorDriver : MonoBehaviour
         // Cabeza.
         if (cam != null)
         {
-            anim.SetLookAtWeight(1f, 0.25f, 1f, 0f, 0.75f);
+            anim.SetLookAtWeight(1f, 0.15f, 1f, 0f, 0.75f);
             anim.SetLookAtPosition(cam.position + cam.forward * 6f);
         }
 
-        // Agacharse: la cámara baja (VRHeadPose) y la cadera la sigue.
-        var head = VRHeadPose.Current;
-        float drop = head != null ? Mathf.Clamp(-head.transform.localPosition.y, 0f, vrMaxCrouch) : 0f;
-        if (drop > 0.03f)
+        // Agacharse: cadera abajo, pies fijos en el piso bajo el cuerpo, rodillas hacia adelante.
+        Transform root = transform;
+        if (vrCrouch > 0.02f)
         {
-            Vector3 lf = anim.GetIKPosition(AvatarIKGoal.LeftFoot), rf = anim.GetIKPosition(AvatarIKGoal.RightFoot);
-            Quaternion lr = anim.GetIKRotation(AvatarIKGoal.LeftFoot), rr = anim.GetIKRotation(AvatarIKGoal.RightFoot);
-            anim.bodyPosition += Vector3.down * drop;
-            anim.SetIKPositionWeight(AvatarIKGoal.LeftFoot, 1f); anim.SetIKPosition(AvatarIKGoal.LeftFoot, lf);
-            anim.SetIKRotationWeight(AvatarIKGoal.LeftFoot, 1f); anim.SetIKRotation(AvatarIKGoal.LeftFoot, lr);
-            anim.SetIKPositionWeight(AvatarIKGoal.RightFoot, 1f); anim.SetIKPosition(AvatarIKGoal.RightFoot, rf);
-            anim.SetIKRotationWeight(AvatarIKGoal.RightFoot, 1f); anim.SetIKRotation(AvatarIKGoal.RightFoot, rr);
+            float scale = root.lossyScale.y;
+            anim.bodyPosition += Vector3.down * vrCrouch;
+            Vector3 ground = root.position;
+            Quaternion footRot = root.rotation;
+            Vector3 lf = ground - root.right * 0.11f * scale + Vector3.up * 0.08f * scale;
+            Vector3 rf = ground + root.right * 0.11f * scale + Vector3.up * 0.08f * scale;
+            float w = Mathf.Clamp01(vrCrouch / 0.08f);
+            SetFoot(AvatarIKGoal.LeftFoot, AvatarIKHint.LeftKnee, lf, footRot, w, -1f);
+            SetFoot(AvatarIKGoal.RightFoot, AvatarIKHint.RightKnee, rf, footRot, w, 1f);
         }
         else
         {
-            anim.SetIKPositionWeight(AvatarIKGoal.LeftFoot, 0f); anim.SetIKRotationWeight(AvatarIKGoal.LeftFoot, 0f);
-            anim.SetIKPositionWeight(AvatarIKGoal.RightFoot, 0f); anim.SetIKRotationWeight(AvatarIKGoal.RightFoot, 0f);
+            SetFoot(AvatarIKGoal.LeftFoot, AvatarIKHint.LeftKnee, Vector3.zero, Quaternion.identity, 0f, -1f);
+            SetFoot(AvatarIKGoal.RightFoot, AvatarIKHint.RightKnee, Vector3.zero, Quaternion.identity, 0f, 1f);
         }
 
         // Manos a los controles.
@@ -312,11 +343,45 @@ public class AvatarAnimatorDriver : MonoBehaviour
         var l = VRControllerPose.Left;
         rightHandW = Mathf.MoveTowards(rightHandW, r != null ? 1f : 0f, dt * 4f);
         leftHandW = Mathf.MoveTowards(leftHandW, l != null ? 1f : 0f, dt * 4f);
-        ApplyHand(AvatarIKGoal.RightHand, AvatarIKHint.RightElbow, rightHandW,
-            r != null ? r.transform.position - r.transform.forward * vrWristBack : Vector3.zero, 1f);
-        ApplyHand(AvatarIKGoal.LeftHand, AvatarIKHint.LeftElbow, leftHandW,
-            l != null ? l.transform.position - l.transform.forward * vrWristBack : Vector3.zero, -1f);
+        VRHand(AvatarIKGoal.RightHand, AvatarIKHint.RightElbow, rightHandW, r != null ? r.transform : null, 1f);
+        VRHand(AvatarIKGoal.LeftHand, AvatarIKHint.LeftElbow, leftHandW, l != null ? l.transform : null, -1f);
         petW = 0f;
+    }
+
+    void SetFoot(AvatarIKGoal goal, AvatarIKHint hint, Vector3 pos, Quaternion rot, float w, float side)
+    {
+        anim.SetIKPositionWeight(goal, w);
+        anim.SetIKRotationWeight(goal, w);
+        anim.SetIKHintPositionWeight(hint, w);
+        if (w <= 0f) return;
+        anim.SetIKPosition(goal, pos);
+        anim.SetIKRotation(goal, rot);
+        Transform t = transform;
+        anim.SetIKHintPosition(hint, t.position + Vector3.up * 0.45f * t.lossyScale.y + t.forward * 0.6f + t.right * 0.12f * side);
+    }
+
+    void VRHand(AvatarIKGoal goal, AvatarIKHint hint, float w, Transform ctrl, float side)
+    {
+        if (w <= 0.001f || ctrl == null)
+        {
+            anim.SetIKPositionWeight(goal, 0f); anim.SetIKRotationWeight(goal, 0f); anim.SetIKHintPositionWeight(hint, 0f);
+            return;
+        }
+        Vector3 wrist = ctrl.position - ctrl.forward * vrWristBack;
+        anim.SetIKPositionWeight(goal, w);
+        anim.SetIKPosition(goal, wrist);
+
+        // Marco humanoide de la mano: en pose T los dedos apuntan hacia afuera (+X derecha, -X izquierda)
+        // y la palma hacia abajo. Se alinea con el control: dedos hacia adelante, palma hacia adentro.
+        Quaternion grip = ctrl.rotation * Quaternion.Euler(vrHandPitch, 0f, 0f);
+        Quaternion map = side > 0f ? Quaternion.LookRotation(Vector3.up, Vector3.right) : Quaternion.LookRotation(Vector3.up, Vector3.left);
+        anim.SetIKRotationWeight(goal, w * vrHandRotationWeight);
+        anim.SetIKRotation(goal, grip * map);
+
+        // Codo hacia afuera y abajo, relativo al torso.
+        Transform t = transform;
+        anim.SetIKHintPositionWeight(hint, w * 0.7f);
+        anim.SetIKHintPosition(hint, t.position + Vector3.up * 0.95f * t.lossyScale.y + t.right * (0.5f * side) - t.forward * 0.15f);
     }
 
     static Vector3 CenterOf(Grabbable g)

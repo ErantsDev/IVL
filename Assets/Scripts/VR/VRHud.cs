@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -6,34 +7,34 @@ using UnityEngine.UI;
 /// <summary>
 /// Interfaz en las gafas. Sólo lo crea VRBootstrap en modo VR.
 ///
-/// Los Canvas "Screen Space - Overlay" no se ven en VR; aquí se pasan a "World Space":
-///  - HUD del nivel (objetivo, materiales, cronómetro): una pantalla fija en la pared, junto al
-///    pizarrón, con un acomodo compacto para que nada se encime. El botón X la trae frente al
-///    usuario a una distancia cómoda de lectura y otra vez X la regresa a la pared. Al terminar
-///    el nivel (resultados) o en pausa viene sola.
-///  - Cualquier otro Canvas (menús, minijuegos, resultados): se coloca frente al usuario, a la
-///    altura de los ojos, cuando aparece; si el usuario se voltea mucho, lo alcanza.
+/// Los Canvas "Screen Space - Overlay" no se ven en VR; aquí se pasan a "World Space", en la
+/// capa UI, que dibuja una cámara aparte encima de todo (ninguna pared o mueble los tapa).
+///  - Todos siguen la vista con un pequeño retraso, a una distancia cómoda de lectura.
+///  - HUD del nivel (objetivo, materiales, cronómetro, calma del conejo): botón X lo oculta / muestra.
+///  - Los textos que hablan de teclado y mouse se cambian por los botones del control.
 ///  - El contador de FPS se oculta (se encimaba con la lista de materiales).
 /// Además dibuja el aviso de acción ("Gatillo: agarrar...") de ObjectGrabber.
 /// </summary>
 public class VRHud : MonoBehaviour
 {
-    [Header("Pantalla del HUD (pared)")]
-    [Tooltip("Tamaño del lienzo del HUD en VR (px): compacto para que los paneles no se separen ni se encimen.")]
-    public Vector2 hudCanvasSize = new Vector2(1120f, 760f);
-    [Tooltip("Ancho de la pantalla en la pared (m).")]
-    public float wallWidth = 1.7f;
-    [Tooltip("Ancho de la pantalla al traerla con X (m).")]
-    public float nearWidth = 1.1f;
-    [Tooltip("Distancia de la pantalla al traerla con X (m).")]
-    public float nearDistance = 1.2f;
+    public const int UILayer = 5;
 
-    [Header("Otros paneles (menús, minijuegos)")]
-    public float frontDistance = 1.4f;
-    [Tooltip("Ancho de un Canvas de 1920 px frente al usuario (m).")]
-    public float frontWidth = 1.7f;
-    [Tooltip("Grados que hay que voltear para que el panel venga hacia el frente.")]
-    public float recenterAngle = 55f;
+    [Header("Paneles")]
+    [Tooltip("Distancia de los paneles a los ojos (m).")]
+    public float distance = 1.2f;
+    [Tooltip("Ancho del HUD del nivel (m).")]
+    public float hudWidth = 0.95f;
+    [Tooltip("Tamaño del lienzo del HUD en VR (px): compacto para que nada se separe ni se encime.")]
+    public Vector2 hudCanvasSize = new Vector2(1120f, 760f);
+    [Tooltip("Ancho de un panel de pantalla completa (menús, minijuegos) (m).")]
+    public float frontWidth = 1.3f;
+    [Tooltip("Qué tan rápido alcanzan los paneles a la vista.")]
+    public float followSpeed = 4f;
+    [Tooltip("Los paneles bajan un poco respecto a la línea de la vista (grados).")]
+    public float pitchDown = 6f;
+    [Tooltip("Cuánto bajan / suben como máximo al inclinar la cabeza (grados).")]
+    public float maxPitchDown = 15f;
+    public float maxPitchUp = 20f;
 
     [Header("Aviso de acción")]
     public float promptDistance = 1.0f;
@@ -42,19 +43,16 @@ public class VRHud : MonoBehaviour
 
     /// <summary>Canvas convertidos (el láser los usa para apuntar a botones).</summary>
     public IReadOnlyList<Canvas> Panels => panels;
-
-    enum Kind { Hud, Front }
-    class Info { public Kind kind; public bool wasVisible; public float yaw; public Vector3 pos; }
+    /// <summary>¿El HUD del nivel está visible? (botón X).</summary>
+    public bool HudVisible { get; private set; } = true;
 
     readonly List<Canvas> panels = new List<Canvas>();
-    readonly Dictionary<Canvas, Info> info = new Dictionary<Canvas, Info>();
+    readonly HashSet<Canvas> hudPanels = new HashSet<Canvas>();
+    readonly List<TMP_Text> texts = new List<TMP_Text>();
+    readonly Dictionary<TMP_Text, string> translated = new Dictionary<TMP_Text, string>();
     float nextScan;
-    bool hudNear, hudNearPlaced;
-    bool hasWall;
-    Vector3 wallPos;
-    Quaternion wallRot;
-    Vector3 nearPos;
-    Quaternion nearRot;
+    Quaternion viewRot;
+    bool hasView;
 
     Canvas promptCanvas;
     RectTransform promptBgRT;
@@ -83,62 +81,43 @@ public class VRHud : MonoBehaviour
             Scan(head);
         }
 
-        if (VRInput.HudTogglePressed()) { hudNear = !hudNear; hudNearPlaced = false; }
+        if (VRInput.HudTogglePressed()) HudVisible = !HudVisible;
 
+        // Orientación de la vista, suavizada: los paneles la siguen sin pegarse a la cara.
+        // Siguen el giro completo, pero la inclinación sólo un poco: al mirar hacia abajo (la charola,
+        // el conejo) el panel no baja a taparlo.
         Transform h = head.transform;
-        var flow = GameFlow.Instance;
-        bool forceNear = flow != null && (flow.CurrentState == GameFlow.State.Results || flow.CurrentState == GameFlow.State.Paused);
+        Vector3 e = Quaternion.LookRotation(h.forward, Vector3.up).eulerAngles;
+        float pitch = Mathf.Clamp(Mathf.DeltaAngle(0f, e.x), -maxPitchUp, maxPitchDown);
+        Quaternion target = Quaternion.Euler(pitch + pitchDown, e.y, 0f);
+        viewRot = hasView ? Quaternion.Slerp(viewRot, target, 1f - Mathf.Exp(-followSpeed * Time.unscaledDeltaTime)) : target;
+        hasView = true;
 
         for (int i = panels.Count - 1; i >= 0; i--)
         {
             var c = panels[i];
             if (c == null) { panels.RemoveAt(i); continue; }
-            var inf = info[c];
             if (c.worldCamera != head.Cam) c.worldCamera = head.Cam;
-            bool visible = c.isActiveAndEnabled;
+            bool hud = hudPanels.Contains(c);
+            // Ocultar con X sin tocar Canvas.enabled (los scripts del juego lo usan para sus propias reglas).
+            bool hidden = hud && !HudVisible && !ForceHud();
 
-            if (inf.kind == Kind.Hud)
-            {
-                bool near = hudNear || forceNear || !hasWall;
-                if (near)
-                {
-                    if (!hudNearPlaced) { PlaceInFront(h, nearDistance, out nearPos, out nearRot); hudNearPlaced = true; }
-                    SetPose(c, nearPos, nearRot, nearWidth / hudCanvasSize.x);
-                }
-                else
-                {
-                    hudNearPlaced = false;
-                    SetPose(c, wallPos, wallRot, wallWidth / hudCanvasSize.x);
-                }
-            }
-            else
-            {
-                float yaw = Yaw(h);
-                if (visible && !inf.wasVisible) Recenter(inf, h, yaw);
-                else if (visible && Mathf.Abs(Mathf.DeltaAngle(inf.yaw, yaw)) > recenterAngle) Recenter(inf, h, yaw);
-                inf.wasVisible = visible;
-                var rt = (RectTransform)c.transform;
-                // Los de mayor sortingOrder quedan un poco más cerca para dibujarse encima.
-                Vector3 p = inf.pos - Quaternion.Euler(0f, inf.yaw, 0f) * Vector3.forward * (Mathf.Clamp(c.sortingOrder, 0, 100) * 0.001f);
-                SetPose(c, p, Quaternion.Euler(0f, inf.yaw, 0f), frontWidth / Mathf.Max(1f, rt.sizeDelta.x));
-            }
+            var rt = (RectTransform)c.transform;
+            float width = hidden ? 0.0001f : hud ? hudWidth : frontWidth;
+            // Los de mayor sortingOrder quedan un poco más cerca para dibujarse encima.
+            float d = distance - Mathf.Clamp(c.sortingOrder, 0, 100) * 0.002f;
+            SetPose(c, h.position + viewRot * Vector3.forward * d, viewRot, width / Mathf.Max(1f, rt.sizeDelta.x));
         }
 
+        TranslateTexts();
         UpdatePrompt(head);
     }
 
-    static float Yaw(Transform h) => Quaternion.LookRotation(Vector3.ProjectOnPlane(h.forward, Vector3.up).sqrMagnitude > 1e-4f ? Vector3.ProjectOnPlane(h.forward, Vector3.up) : h.up).eulerAngles.y;
-
-    void Recenter(Info inf, Transform h, float yaw)
+    /// <summary>En pausa o resultados el HUD se muestra aunque se haya ocultado con X.</summary>
+    static bool ForceHud()
     {
-        inf.yaw = yaw;
-        inf.pos = h.position + Quaternion.Euler(0f, yaw, 0f) * Vector3.forward * frontDistance;
-    }
-
-    static void PlaceInFront(Transform h, float dist, out Vector3 pos, out Quaternion rot)
-    {
-        rot = Quaternion.Euler(0f, Yaw(h), 0f);
-        pos = h.position + rot * Vector3.forward * dist - Vector3.up * 0.1f;
+        var flow = GameFlow.Instance;
+        return flow != null && (flow.CurrentState == GameFlow.State.Results || flow.CurrentState == GameFlow.State.Paused);
     }
 
     static void SetPose(Canvas c, Vector3 pos, Quaternion rot, float worldScale)
@@ -160,11 +139,23 @@ public class VRHud : MonoBehaviour
         {
             if (c == promptCanvas || !c.isRootCanvas || c.renderMode != RenderMode.ScreenSpaceOverlay) continue;
             if (c.GetComponentInParent<FpsCounter>() != null) { c.enabled = false; continue; }
-            Convert(c, head, c == hudCanvas ? Kind.Hud : Kind.Front);
+            Convert(c, head, c == hudCanvas);
+        }
+
+        // Capa UI (la dibuja la cámara de interfaz encima de todo) y textos a traducir.
+        texts.Clear();
+        foreach (var c in panels)
+        {
+            if (c == null) continue;
+            foreach (var t in c.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = UILayer;
+            c.GetComponentsInChildren(true, tmpBuffer);
+            texts.AddRange(tmpBuffer);
         }
     }
 
-    void Convert(Canvas c, VRHeadPose head, Kind kind)
+    readonly List<TMP_Text> tmpBuffer = new List<TMP_Text>();
+
+    void Convert(Canvas c, VRHeadPose head, bool isHud)
     {
         Vector2 size = new Vector2(1920f, 1080f);
         var scaler = c.GetComponent<CanvasScaler>();
@@ -173,53 +164,56 @@ public class VRHud : MonoBehaviour
             if (scaler.uiScaleMode == CanvasScaler.ScaleMode.ScaleWithScreenSize) size = scaler.referenceResolution;
             scaler.enabled = false;
         }
-        if (kind == Kind.Hud) size = hudCanvasSize;
+        if (isHud) size = hudCanvasSize;
 
         c.renderMode = RenderMode.WorldSpace;
         c.worldCamera = head.Cam;
         var rt = (RectTransform)c.transform;
         rt.pivot = new Vector2(0.5f, 0.5f);
         rt.sizeDelta = size;
-
-        var inf = new Info { kind = kind };
-        Recenter(inf, head.transform, Yaw(head.transform));
-        info[c] = inf;
         panels.Add(c);
-
-        if (kind == Kind.Hud) hasWall = FindWallPose(head.transform, out wallPos, out wallRot);
+        if (isHud) hudPanels.Add(c);
     }
 
-    /// <summary>Lugar en la pared, a un lado del pizarrón, mirando hacia el salón.</summary>
-    bool FindWallPose(Transform viewer, out Vector3 pos, out Quaternion rot)
+    // ------------------------------------------------------------------
+    //  Textos: teclado y mouse -> botones del control
+    // ------------------------------------------------------------------
+
+    static readonly (Regex re, string to)[] Rules =
     {
-        pos = default; rot = Quaternion.identity;
-        var board = GameObject.Find("Salon/Pizarron");
-        if (board == null) board = GameObject.Find("Pizarron");
-        if (board == null) return false;
-        var rs = board.GetComponentsInChildren<Renderer>();
-        if (rs.Length == 0) return false;
-        Bounds b = rs[0].bounds;
-        foreach (var r in rs) b.Encapsulate(r.bounds);
+        (new Regex(@"mantén (el )?clic derecho y mueve el mouse de lado a lado", RegexOptions.IgnoreCase), "mantén el grip derecho y mueve la mano de lado a lado"),
+        (new Regex(@"sigue moviendo el mouse", RegexOptions.IgnoreCase), "sigue moviendo la mano"),
+        (new Regex(@"suelta el clic derecho", RegexOptions.IgnoreCase), "suelta el grip"),
+        (new Regex(@"Clic derecho \+ mover el mouse", RegexOptions.IgnoreCase), "Grip + mover la mano"),
+        (new Regex(@"Clic derecho \+ mover", RegexOptions.IgnoreCase), "Grip + girar la mano"),
+        (new Regex(@"(mant[eé]n|con) el clic izquierdo", RegexOptions.IgnoreCase), "$1 el gatillo"),
+        (new Regex(@"\(clic para seleccionar\)", RegexOptions.IgnoreCase), "(gatillo para seleccionar)"),
+        (new Regex(@"Pasa el mouse sobre", RegexOptions.IgnoreCase), "Apunta con el láser a"),
+        (new Regex(@"presiona (<b>)?E(</b>)?(?![\w])"), "presiona $1el gatillo$2"),
+        (new Regex(@"presiona (<b>)?Enter(</b>)?"), "presiona $1A$2"),
+        (new Regex(@"\bclic derecho\b", RegexOptions.IgnoreCase), "grip"),
+        (new Regex(@"\bel mouse\b", RegexOptions.IgnoreCase), "la mano"),
+    };
 
-        // La normal del pizarrón es el eje horizontal más delgado; apunta hacia el salón.
-        Vector3 n = b.size.x < b.size.z ? Vector3.right : Vector3.forward;
-        if (Vector3.Dot(viewer.position - b.center, n) < 0f) n = -n;
-        Vector3 side = Vector3.Cross(Vector3.up, n);
-        float half = Mathf.Abs(Vector3.Dot(b.extents, new Vector3(Mathf.Abs(side.x), 0f, Mathf.Abs(side.z))));
-
-        // Del lado con más pared libre.
-        Vector3 origin = b.center + n * 0.08f;
-        float right = FreeDistance(origin, side), left = FreeDistance(origin, -side);
-        Vector3 dir = right >= left ? side : -side;
-        float need = half + wallWidth * 0.5f + 0.15f;
-        float avail = Mathf.Max(right, left) - wallWidth * 0.5f - 0.05f;
-        pos = b.center + dir * Mathf.Min(need, Mathf.Max(half, avail)) + n * 0.03f;
-        rot = Quaternion.LookRotation(-n, Vector3.up);
-        return true;
+    public static string Translate(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return s;
+        foreach (var (re, to) in Rules) s = re.Replace(s, to);
+        return s;
     }
 
-    static float FreeDistance(Vector3 origin, Vector3 dir) =>
-        Physics.Raycast(origin, dir, out var hit, 8f, ~0, QueryTriggerInteraction.Ignore) ? hit.distance : 8f;
+    void TranslateTexts()
+    {
+        foreach (var t in texts)
+        {
+            if (t == null || !t.isActiveAndEnabled) continue;
+            string cur = t.text;
+            if (translated.TryGetValue(t, out var last) && last == cur) continue;
+            string tr = Translate(cur);
+            if (tr != cur) t.text = tr;
+            translated[t] = tr;
+        }
+    }
 
     // ------------------------------------------------------------------
     //  Aviso de acción
@@ -228,7 +222,7 @@ public class VRHud : MonoBehaviour
     void BuildPrompt()
     {
         var go = new GameObject("VRAviso", typeof(RectTransform));
-        go.layer = 5;
+        go.layer = UILayer;
         go.transform.SetParent(transform, false);
         promptCanvas = go.AddComponent<Canvas>();
         promptCanvas.renderMode = RenderMode.WorldSpace;
@@ -238,7 +232,7 @@ public class VRHud : MonoBehaviour
         rt.localScale = Vector3.one * (promptDistance * 0.0012f);
 
         var bgGO = new GameObject("Fondo", typeof(RectTransform));
-        bgGO.layer = 5;
+        bgGO.layer = UILayer;
         bgGO.transform.SetParent(go.transform, false);
         promptBgRT = (RectTransform)bgGO.transform;
         promptBg = bgGO.AddComponent<Image>();
@@ -246,7 +240,7 @@ public class VRHud : MonoBehaviour
         promptBg.raycastTarget = false;
 
         var textGO = new GameObject("Texto", typeof(RectTransform));
-        textGO.layer = 5;
+        textGO.layer = UILayer;
         textGO.transform.SetParent(promptBgRT, false);
         var trt = (RectTransform)textGO.transform;
         trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
@@ -283,8 +277,10 @@ public class VRHud : MonoBehaviour
     {
         if (string.IsNullOrEmpty(s)) return s;
         // En VR el objeto gira con la mano: no hace falta la indicación de rotar.
-        s = s.Replace("   ·   Clic derecho (mantener): rotar", "").Replace("<size=15>", "<size=80%>");
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"(?m)^(E / Clic|E):", "Gatillo:");
-        return System.Text.RegularExpressions.Regex.Replace(s, @"(?m)^R:", "Botón A:");
+        s = s.Replace("   ·   Clic derecho (mantener): rotar", "").Replace("<size=14>", "<size=80%>").Replace("<size=15>", "<size=80%>");
+        s = Regex.Replace(s, @"(?m)^(E / Clic|E):", "Gatillo:");
+        s = Regex.Replace(s, @"(?m)^R:", "Botón A:");
+        s = Regex.Replace(s, @"y presiona E\.?", "y presiona el gatillo.");
+        return Translate(s);
     }
 }

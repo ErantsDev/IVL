@@ -494,6 +494,12 @@ public class RabbitController : Interactable
             var camObj = ObjectGrabber.Instance != null ? ObjectGrabber.Instance.Cam : Camera.main;
             if (camObj == null) return;
             var cam = camObj.transform;
+            // Con gafas mover la cabeza es natural: lo que asusta al conejo es caminar o girar el cuerpo.
+            if (VRMode.Active)
+            {
+                var body = camObj.GetComponentInParent<PlayerController>();
+                if (body != null) cam = body.transform;
+            }
             Vector3 e = cam.eulerAngles;
             if (hasLast && Time.deltaTime > 0f)
             {
@@ -626,6 +632,7 @@ public class RabbitController : Interactable
         var camObj = ObjectGrabber.Instance != null ? ObjectGrabber.Instance.Cam : Camera.main;
         if (camObj == null) return;
         var camT = camObj.transform;
+        if (VRMode.Active && VRCarry(camT)) return; // con gafas: en los brazos, entre los dos controles
 
         swayPhase += Time.deltaTime * (1.3f + smoothedSpeed * 0.6f);
         float swayK = Mathf.Clamp01(smoothedSpeed / Mathf.Max(0.01f, calmSpeed)) * carrySwayAmount;
@@ -641,6 +648,28 @@ public class RabbitController : Interactable
 
         transform.position = Vector3.SmoothDamp(transform.position, targetPos, ref carryVelocity, carryPositionSmoothTime);
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 1f - Mathf.Exp(-carryRotationSpeed * Time.deltaTime));
+    }
+
+    /// <summary>
+    /// Con gafas: el conejo va entre las dos manos (los controles), mirando de lado como en brazos.
+    /// Devuelve false si no hay controles (se usa el acomodo normal frente a la cámara).
+    /// </summary>
+    bool VRCarry(Transform head)
+    {
+        var l = VRControllerPose.Left;
+        var r = VRControllerPose.Right;
+        if (l == null && r == null) return false;
+        Vector3 mid = l != null && r != null ? (l.transform.position + r.transform.position) * 0.5f
+                    : (r != null ? r.transform.position : l.transform.position);
+        Vector3 fwd = Vector3.ProjectOnPlane(head.forward, Vector3.up);
+        if (fwd.sqrMagnitude < 1e-4f) fwd = Vector3.ProjectOnPlane(head.up, Vector3.up);
+        Quaternion targetRot = Quaternion.LookRotation(fwd.normalized, Vector3.up) * Quaternion.Euler(0f, carryLocalEuler.y, 0f);
+        if (petVisual > 0.001f)
+            targetRot *= Quaternion.Euler(10f * petVisual, 0f, Mathf.Sin(Time.time * 7f) * 4f * petVisual);
+        Vector3 targetPos = mid + Vector3.up * 0.06f;
+        transform.position = Vector3.SmoothDamp(transform.position, targetPos, ref carryVelocity, carryPositionSmoothTime * 0.5f);
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 1f - Mathf.Exp(-carryRotationSpeed * Time.deltaTime));
+        return true;
     }
 
     void UpdateMood()

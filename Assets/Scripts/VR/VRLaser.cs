@@ -164,6 +164,8 @@ public class VRLaser : MonoBehaviour
             }
         }
         SetHover(uiTarget);
+        // Zona transparente del panel: el láser sigue de largo hacia la escena.
+        if (uiTarget == null) return float.PositiveInfinity;
 
         if (uiTarget != null && VRInput.PrimaryPressed())
         {

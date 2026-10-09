@@ -22,12 +22,15 @@ public static class VRInput
         public bool valid, trigger, grip, primary, secondary, menu, stickClick;
         public Vector2 stick;
         public Quaternion rot;
+        public Vector3 pos;
     }
 
     const float Deadzone = 0.15f;
     const float StickOn = 0.75f, StickOff = 0.35f;
     /// <summary>Grados de giro del control → "píxeles de mouse" (para rotar objetos, invertir el tubo...).</summary>
     const float DegreesToMouse = 0.6f;
+    /// <summary>Metros que se mueve el control → "píxeles de mouse".</summary>
+    const float MetersToMouse = 1500f;
 
     static Hand lNow, lPrev, rNow, rPrev;
     static int sampledFrame = -1;
@@ -69,6 +72,12 @@ public static class VRInput
         {
             Vector3 e = (Quaternion.Inverse(rPrev.rot) * rNow.rot).eulerAngles;
             lookDelta = new Vector2(Mathf.DeltaAngle(0f, e.y), -Mathf.DeltaAngle(0f, e.x)) / Mathf.Max(DegreesToMouse, 0.01f);
+
+            // Y cuánto se movió la mano de lado / arriba (acariciar al conejo "de lado a lado").
+            var head = VRHeadPose.Current;
+            Quaternion hr = head != null ? head.transform.localRotation : Quaternion.identity;
+            Vector3 dp = rNow.pos - rPrev.pos;
+            lookDelta += new Vector2(Vector3.Dot(dp, hr * Vector3.right), Vector3.Dot(dp, Vector3.up)) * MetersToMouse;
         }
     }
 
@@ -86,6 +95,7 @@ public static class VRInput
         d.TryGetFeatureValue(CommonUsages.primary2DAxisClick, out h.stickClick);
         d.TryGetFeatureValue(CommonUsages.primary2DAxis, out h.stick);
         if (!d.TryGetFeatureValue(CommonUsages.deviceRotation, out h.rot)) h.rot = Quaternion.identity;
+        d.TryGetFeatureValue(CommonUsages.devicePosition, out h.pos);
         return h;
     }
 
