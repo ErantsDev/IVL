@@ -52,6 +52,11 @@ public class ObjectGrabber : MonoBehaviour
     bool isRotating;
     float crosshairActive;
 
+    [Header("VR")]
+    [Tooltip("Con gafas: qué tan adelante del control queda el centro del objeto sostenido (m).")]
+    public float vrHoldForward = 0.09f;
+    Quaternion vrHoldRotation = Quaternion.identity;
+
     static readonly RaycastHit[] hitBuffer = new RaycastHit[32];
 
     public static ObjectGrabber Instance { get; private set; }
@@ -196,7 +201,8 @@ public class ObjectGrabber : MonoBehaviour
 
     void UpdateRotation()
     {
-        bool wantsRotate = held != null && held.allowRotate && !held.customCarry && RotatePressed();
+        // Con gafas el objeto gira con la mano, no hace falta rotarlo con el grip.
+        bool wantsRotate = !VRMode.Active && held != null && held.allowRotate && !held.customCarry && RotatePressed();
 
         if (wantsRotate != isRotating)
         {
@@ -220,6 +226,8 @@ public class ObjectGrabber : MonoBehaviour
         if (held == null || held.customCarry) return;
 
         Vector3 target = cam.transform.position + cam.transform.forward * holdDistance + cam.transform.TransformDirection(held.holdViewOffset);
+        var vrHand = VRMode.Active && VRControllerPose.Right != null ? VRControllerPose.Right.transform : null;
+        if (vrHand != null) target = vrHand.position + vrHand.forward * vrHoldForward; // con gafas: en la mano
         Vector3 toTarget = target - held.Body.worldCenterOfMass;
         Vector3 velocity = Vector3.ClampMagnitude(toTarget * followStrength, maxFollowSpeed);
 #if UNITY_6000_0_OR_NEWER
@@ -227,7 +235,17 @@ public class ObjectGrabber : MonoBehaviour
 #else
         held.Body.velocity = velocity;
 #endif
-        if (!isRotating)
+        if (vrHand != null)
+        {
+            // Gira junto con la mano, conservando cómo estaba al agarrarlo.
+            Quaternion delta = (vrHand.rotation * vrHoldRotation) * Quaternion.Inverse(held.Body.rotation);
+            delta.ToAngleAxis(out float angle, out Vector3 axis);
+            if (angle > 180f) angle -= 360f;
+            held.Body.angularVelocity = float.IsFinite(axis.x) && Mathf.Abs(angle) > 0.01f
+                ? axis.normalized * (angle * Mathf.Deg2Rad * followStrength * 0.6f)
+                : Vector3.zero;
+        }
+        else if (!isRotating)
             held.Body.angularVelocity *= 0.8f;
 
         // Si el objeto queda atorado muy lejos (p. ej. detrás de una pared), se suelta.
@@ -248,6 +266,8 @@ public class ObjectGrabber : MonoBehaviour
             g.Body.useGravity = false;
             g.Body.interpolation = RigidbodyInterpolation.Interpolate;
             holdDistance = Mathf.Clamp(Vector3.Distance(cam.transform.position, g.Body.worldCenterOfMass), minHoldDistance, maxHoldDistance);
+            if (VRMode.Active && VRControllerPose.Right != null)
+                vrHoldRotation = Quaternion.Inverse(VRControllerPose.Right.transform.rotation) * g.Body.rotation;
         }
         g.RaiseGrabbed();
     }

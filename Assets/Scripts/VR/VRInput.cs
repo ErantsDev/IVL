@@ -10,9 +10,10 @@ using UnityEngine.XR;
 ///   Joystick derecho ← → .......... girar en pasos                  (mouse horizontal)
 ///   Joystick derecho ↑ ↓ .......... acercar / alejar lo sostenido   (rueda)
 ///   Gatillo derecho ............... agarrar / soltar / usar         (E, clic)
-///   Grip derecho + girar control .. rotar lo sostenido              (clic derecho + mouse)
+///   Grip derecho + girar control .. acariciar al conejo, invertir el tubo (clic derecho + mouse)
 ///   Botón A ....................... acción secundaria / confirmar   (R, Enter)
 ///   Botón B ....................... cancelar                        (Q)
+///   Botón X (izquierdo) ........... traer / regresar el panel del objetivo y materiales
 /// </summary>
 public static class VRInput
 {
@@ -131,6 +132,9 @@ public static class VRInput
     public static bool NextFieldPressed() => false;
     public static bool ShiftHeld() => false;
     public static bool DebugTogglePressed() => false;
+
+    /// <summary>Botón X (control izquierdo): traer / regresar el panel del objetivo y materiales.</summary>
+    public static bool HudTogglePressed() { Sample(); return lNow.primary && !lPrev.primary; }
 
     /// <summary>-1 / 0 / +1: un giro por pasos a la izquierda o derecha en esta trama.</summary>
     public static int SnapTurn() { Sample(); return snapEvent; }

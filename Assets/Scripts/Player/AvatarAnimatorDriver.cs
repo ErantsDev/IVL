@@ -180,6 +180,7 @@ public class AvatarAnimatorDriver : MonoBehaviour
     {
         if (layerIndex != 0 || anim == null) return;
         float dt = Time.deltaTime;
+        if (VRMode.Active && cc != null) { ApplyVRIK(dt); return; } // con gafas: cuerpo unido a la cabeza y a los controles
 
         // La cabeza (y un poco el torso) siguen hacia donde mira la cámara.
         float lookTarget = lookAtCamera && cam != null ? 1f - emoteWeight : 0f; // al bailar, la cabeza sigue el baile
@@ -260,6 +261,62 @@ public class AvatarAnimatorDriver : MonoBehaviour
         // Codos hacia afuera y abajo, para que el brazo no se doble hacia adentro.
         anim.SetIKHintPositionWeight(hint, w * 0.6f);
         anim.SetIKHintPosition(hint, transform.position + Vector3.up * 1.0f * transform.lossyScale.y + transform.right * (0.45f * sideSign));
+    }
+
+    [Header("VR")]
+    [Tooltip("Con gafas: cuánto puede bajar la cadera al agacharse (m).")]
+    public float vrMaxCrouch = 0.7f;
+    [Tooltip("Con gafas: distancia del control a la muñeca (m), hacia atrás del control.")]
+    public float vrWristBack = 0.07f;
+
+    /// <summary>
+    /// Sólo con gafas. La cabeza mira hacia donde mira el visor (incluida la inclinación), la cadera
+    /// baja cuando el usuario se agacha (los pies se quedan en el piso y las rodillas se doblan) y
+    /// cada mano va a su control. Así el avatar sigue al usuario, también en el espejo.
+    /// </summary>
+    void ApplyVRIK(float dt)
+    {
+        // Brazos visibles en primera persona: se ven unidos a los controles.
+        var pa = PlayerAvatar.Instance;
+        if (pa != null && pa.Hands != null && pa.Hands.FirstPersonArms != null && !pa.Hands.FirstPersonArms.enabled)
+            pa.Hands.FirstPersonArms.enabled = true;
+
+        // Cabeza.
+        if (cam != null)
+        {
+            anim.SetLookAtWeight(1f, 0.25f, 1f, 0f, 0.75f);
+            anim.SetLookAtPosition(cam.position + cam.forward * 6f);
+        }
+
+        // Agacharse: la cámara baja (VRHeadPose) y la cadera la sigue.
+        var head = VRHeadPose.Current;
+        float drop = head != null ? Mathf.Clamp(-head.transform.localPosition.y, 0f, vrMaxCrouch) : 0f;
+        if (drop > 0.03f)
+        {
+            Vector3 lf = anim.GetIKPosition(AvatarIKGoal.LeftFoot), rf = anim.GetIKPosition(AvatarIKGoal.RightFoot);
+            Quaternion lr = anim.GetIKRotation(AvatarIKGoal.LeftFoot), rr = anim.GetIKRotation(AvatarIKGoal.RightFoot);
+            anim.bodyPosition += Vector3.down * drop;
+            anim.SetIKPositionWeight(AvatarIKGoal.LeftFoot, 1f); anim.SetIKPosition(AvatarIKGoal.LeftFoot, lf);
+            anim.SetIKRotationWeight(AvatarIKGoal.LeftFoot, 1f); anim.SetIKRotation(AvatarIKGoal.LeftFoot, lr);
+            anim.SetIKPositionWeight(AvatarIKGoal.RightFoot, 1f); anim.SetIKPosition(AvatarIKGoal.RightFoot, rf);
+            anim.SetIKRotationWeight(AvatarIKGoal.RightFoot, 1f); anim.SetIKRotation(AvatarIKGoal.RightFoot, rr);
+        }
+        else
+        {
+            anim.SetIKPositionWeight(AvatarIKGoal.LeftFoot, 0f); anim.SetIKRotationWeight(AvatarIKGoal.LeftFoot, 0f);
+            anim.SetIKPositionWeight(AvatarIKGoal.RightFoot, 0f); anim.SetIKRotationWeight(AvatarIKGoal.RightFoot, 0f);
+        }
+
+        // Manos a los controles.
+        var r = VRControllerPose.Right;
+        var l = VRControllerPose.Left;
+        rightHandW = Mathf.MoveTowards(rightHandW, r != null ? 1f : 0f, dt * 4f);
+        leftHandW = Mathf.MoveTowards(leftHandW, l != null ? 1f : 0f, dt * 4f);
+        ApplyHand(AvatarIKGoal.RightHand, AvatarIKHint.RightElbow, rightHandW,
+            r != null ? r.transform.position - r.transform.forward * vrWristBack : Vector3.zero, 1f);
+        ApplyHand(AvatarIKGoal.LeftHand, AvatarIKHint.LeftElbow, leftHandW,
+            l != null ? l.transform.position - l.transform.forward * vrWristBack : Vector3.zero, -1f);
+        petW = 0f;
     }
 
     static Vector3 CenterOf(Grabbable g)

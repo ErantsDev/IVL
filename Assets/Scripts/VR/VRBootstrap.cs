@@ -67,12 +67,12 @@ public class VRBootstrap : MonoBehaviour
         {
             var orbit = flow.menuCamera.GetComponent<MenuCameraOrbit>();
             if (orbit != null) orbit.enabled = false;
-            AttachHead(flow.menuCamera.transform);
+            AttachHead(flow.menuCamera.transform, false);
         }
 
         foreach (var pc in FindObjectsByType<PlayerController>(FindObjectsInactive.Include, FindObjectsSortMode.None))
         {
-            if (pc.cameraTransform != null) AttachHead(pc.cameraTransform);
+            if (pc.cameraTransform != null) AttachHead(pc.cameraTransform, true);
             if (pc.GetComponent<VRSnapTurn>() == null) pc.gameObject.AddComponent<VRSnapTurn>();
         }
 
@@ -84,7 +84,7 @@ public class VRBootstrap : MonoBehaviour
     }
 
     /// <summary>Mete la cámara dentro de un padre en su posición actual (sólo giro horizontal) y le agrega VRHeadPose.</summary>
-    static void AttachHead(Transform cam)
+    static void AttachHead(Transform cam, bool withControllers)
     {
         if (cam.GetComponent<VRHeadPose>() != null) return;
 
@@ -101,8 +101,13 @@ public class VRBootstrap : MonoBehaviour
         var head = cam.gameObject.AddComponent<VRHeadPose>();
 
         // Los controles, en el mismo espacio que la cabeza: se ven y se mueven con las manos.
-        VRControllerPose.Create(offset, UnityEngine.XR.XRNode.LeftHand, head);
-        VRControllerPose.Create(offset, UnityEngine.XR.XRNode.RightHand, head);
+        // Sólo en el jugador: la cámara del menú se apaga al jugar, pero su soporte no, y sus
+        // controles quedaban flotando donde estaba esa cámara (el "duplicado").
+        if (withControllers)
+        {
+            VRControllerPose.Create(offset, UnityEngine.XR.XRNode.LeftHand, head);
+            VRControllerPose.Create(offset, UnityEngine.XR.XRNode.RightHand, head);
+        }
 
         var c = cam.GetComponent<Camera>();
         if (c != null) c.cullingMask |= 1 << 5; // capa UI: los paneles flotantes

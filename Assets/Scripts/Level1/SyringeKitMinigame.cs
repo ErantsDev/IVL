@@ -106,9 +106,18 @@ public class SyringeKitMinigame : MonoBehaviour
         ResetChoices(false, false);
         ShuffleSlots();
         stage.gameObject.SetActive(true);
-        cam.gameObject.SetActive(true);
         playerCam = ObjectGrabber.Instance != null ? ObjectGrabber.Instance.Cam : Camera.main;
-        if (playerCam != null && playerCam != cam) playerCam.enabled = false;
+        if (VRMode.Active && playerCam != null)
+        {
+            // Con gafas no se cambia de cámara (marea): la charola aparece frente al usuario
+            // y se elige con el láser del control.
+            PlaceStageInFront(playerCam.transform);
+        }
+        else
+        {
+            cam.gameObject.SetActive(true);
+            if (playerCam != null && playerCam != cam) playerCam.enabled = false;
+        }
         hudCanvas = Level != null && Level.counterText != null ? Level.counterText.canvas.rootCanvas : null;
         if (hudCanvas != null) hudCanvas.enabled = false;
 
@@ -154,7 +163,7 @@ public class SyringeKitMinigame : MonoBehaviour
         if (phase == Phase.Choosing)
         {
             hovered = null;
-            if (!PointerOverUI() && Physics.Raycast(cam.ScreenPointToRay(MousePosition()), out var hit, 3f, ~0, QueryTriggerInteraction.Collide))
+            if (!PointerOverUI() && Physics.Raycast(PointerRay(), out var hit, 3f, ~0, QueryTriggerInteraction.Collide))
                 hovered = items.Find(it => it.col == hit.collider);
             if (hovered != null && ClickPressed()) Pick(hovered);
             if (CancelPressed()) { Close(false); return; }
@@ -457,6 +466,12 @@ public class SyringeKitMinigame : MonoBehaviour
 
     void UpdateTags()
     {
+        if (VRMode.Active)
+        {
+            foreach (var it in items) it.tag.gameObject.SetActive(false);
+            UpdateVRLabel();
+            return;
+        }
         bool show = phase != Phase.Result;
         foreach (var it in items)
         {
@@ -570,7 +585,45 @@ public class SyringeKitMinigame : MonoBehaviour
 
     static bool CancelPressed() => GameInput.CancelPressed();
 
-    static bool PointerOverUI() => EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+    static bool PointerOverUI() => VRMode.Active ? VRLaser.OverUI : EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+
+    /// <summary>Rayo para elegir: el del mouse en la cámara del minijuego, o el láser con gafas.</summary>
+    Ray PointerRay() => VRMode.Active && VRLaser.TryGetRay(out var laser) ? laser : cam.ScreenPointToRay(MousePosition());
+
+    // ---------- Gafas (VR) ----------
+
+    TextMeshPro vrLabel;
+
+    /// <summary>Pone la charola frente al usuario, a la altura de una mesa, de frente a él.</summary>
+    void PlaceStageInFront(Transform head)
+    {
+        Vector3 fwd = Vector3.ProjectOnPlane(head.forward, Vector3.up);
+        if (fwd.sqrMagnitude < 1e-4f) fwd = Vector3.ProjectOnPlane(head.up, Vector3.up);
+        fwd.Normalize();
+        stage.SetPositionAndRotation(head.position + fwd * 0.5f + Vector3.down * 0.5f, Quaternion.LookRotation(fwd, Vector3.up));
+    }
+
+    /// <summary>Con gafas, la etiqueta del elemento apuntado flota sobre él (las de pantalla no aplican).</summary>
+    void UpdateVRLabel()
+    {
+        if (vrLabel == null)
+        {
+            var go = new GameObject("EtiquetaVR");
+            go.transform.SetParent(stage, false);
+            vrLabel = go.AddComponent<TextMeshPro>();
+            if (font != null) vrLabel.font = font;
+            vrLabel.fontSize = 0.35f;
+            vrLabel.alignment = TextAlignmentOptions.Center;
+            vrLabel.richText = true;
+            vrLabel.rectTransform.sizeDelta = new Vector2(0.5f, 0.12f);
+        }
+        var it = phase == Phase.Choosing ? hovered : null;
+        vrLabel.gameObject.SetActive(it != null);
+        if (it == null || playerCam == null) return;
+        vrLabel.text = it.tagText.text;
+        vrLabel.transform.position = it.col.bounds.center + Vector3.up * 0.07f;
+        vrLabel.transform.rotation = Quaternion.LookRotation(vrLabel.transform.position - playerCam.transform.position, Vector3.up);
+    }
 
     // ---------- Para pruebas automáticas ----------
     public int ItemCount => items.Count;

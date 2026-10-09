@@ -13,8 +13,22 @@ public class VRControllerPose : MonoBehaviour
     [Tooltip("Cabeza de referencia: su punto inicial es el origen de los controles.")]
     public VRHeadPose head;
 
-    void OnEnable() => Application.onBeforeRender += Apply;
-    void OnDisable() => Application.onBeforeRender -= Apply;
+    /// <summary>Controles del jugador (null si no hay gafas).</summary>
+    public static VRControllerPose Left { get; private set; }
+    public static VRControllerPose Right { get; private set; }
+
+    void OnEnable()
+    {
+        if (node == XRNode.LeftHand) Left = this; else Right = this;
+        Application.onBeforeRender += Apply;
+    }
+
+    void OnDisable()
+    {
+        Application.onBeforeRender -= Apply;
+        if (Left == this) Left = null;
+        if (Right == this) Right = null;
+    }
     void Update() => Apply();
 
     void Apply()
@@ -43,6 +57,9 @@ public class VRControllerPose : MonoBehaviour
         var prefab = Resources.Load<GameObject>(left ? "Prefabs/LeftControllerModel" : "Prefabs/RightControllerModel ");
         if (prefab != null) Object.Instantiate(prefab, go.transform, false);
         else Debug.LogWarning("[VR] No se encontró el modelo del control en el SDK de PICO.");
+
+        // El derecho lleva el láser para apuntar y usar los paneles.
+        if (!left) go.AddComponent<VRLaser>();
         return pose;
     }
 }

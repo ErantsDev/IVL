@@ -159,6 +159,7 @@ public class CameraView : MonoBehaviour
     /// </summary>
     public static Ray AimRay(Transform eye)
     {
+        if (VRMode.Active && VRLaser.TryGetRay(out var laser)) return laser; // con gafas se apunta con el control derecho
         var cv = Instance;
         if (cv == null || cv.thirdCam == null || !cv.thirdCam.enabled) return new Ray(eye.position, eye.forward);
         Transform c = cv.thirdCam.transform;
