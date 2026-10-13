@@ -508,8 +508,12 @@ public class RabbitController : Interactable
                 smoothedTurn = Mathf.Lerp(smoothedTurn, turn, 1f - Mathf.Exp(-8f * Time.deltaTime));
 
                 float gain = 0f;
-                if (smoothedSpeed > calmSpeed) gain += (smoothedSpeed - calmSpeed) * speedStressRate;
-                if (smoothedTurn > calmTurnSpeed) gain += (smoothedTurn - calmTurnSpeed) * turnStressRate;
+                // Con gafas se mide el movimiento del conejo en los brazos (no el de la cámara): caminar
+                // normal ya lo inquieta un poco y los movimientos bruscos de brazos lo asustan.
+                float calmV = VRMode.Active ? calmSpeed * vrCalmSpeedFactor : calmSpeed;
+                float calmT = VRMode.Active ? calmTurnSpeed * vrCalmTurnFactor : calmTurnSpeed;
+                if (smoothedSpeed > calmV) gain += (smoothedSpeed - calmV) * speedStressRate;
+                if (smoothedTurn > calmT) gain += (smoothedTurn - calmT) * turnStressRate;
                 if (vertical > 1.2f) gain += jumpStress; // brincar con el conejo en brazos
 
                 if (Time.time < graceUntil) gain = 0f;
@@ -648,6 +652,10 @@ public class RabbitController : Interactable
     }
 
     [Header("VR: conejo en brazos")]
+    [Tooltip("Con gafas: fracción de calmSpeed a partir de la cual el conejo se estresa.")]
+    public float vrCalmSpeedFactor = 0.5f;
+    [Tooltip("Con gafas: fracción de calmTurnSpeed a partir de la cual el conejo se estresa.")]
+    public float vrCalmTurnFactor = 0.6f;
     [Tooltip("Con gafas: qué tan abajo de las manos queda el centro del conejo (m): descansa sobre ellas.")]
     public float vrRestOnHands = 0.05f;
 

@@ -48,6 +48,7 @@ public class VRControllerPose : MonoBehaviour
     {
         bool left = node == XRNode.LeftHand;
         var go = new GameObject(left ? "MandoIzquierdo" : "MandoDerecho");
+        go.SetActive(false); // se activa al final: OnEnable debe ver ya qué mano es (antes los dos se registraban como derecho)
         go.transform.SetParent(parent, false);
         var pose = go.AddComponent<VRControllerPose>();
         pose.node = node;
@@ -60,6 +61,7 @@ public class VRControllerPose : MonoBehaviour
 
         // El derecho lleva el láser para apuntar y usar los paneles.
         if (!left) go.AddComponent<VRLaser>();
+        go.SetActive(true);
         return pose;
     }
 }

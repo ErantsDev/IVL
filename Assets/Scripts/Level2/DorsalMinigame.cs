@@ -153,7 +153,7 @@ public class DorsalMinigame : MonoBehaviour
         playerCam = ObjectGrabber.Instance != null ? ObjectGrabber.Instance.Cam : null;
         if (playerCam != null) playerCam.enabled = false;
         // Con gafas la vista cenital ocupa la vista como en PC; el control derecho mueve el puntero.
-        if (VRMode.Active) VRScreen.Show(minigameCamera, panel != null ? (RectTransform)panel.transform : null);
+        if (VRMode.Active) VRScreen.Show(minigameCamera, panel != null ? (RectTransform)panel.transform : null, PatchCenterWorld());
 
         EnsureEffects();
 
