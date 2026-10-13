@@ -121,7 +121,7 @@ public class VRBootstrap : MonoBehaviour
     static void AddUICamera(Camera baseCam)
     {
         int ui = 1 << VRHud.UILayer;
-        baseCam.cullingMask &= ~ui;
+        baseCam.cullingMask &= ~(ui | (1 << VRScreen.ScreenUILayer));
         var go = new GameObject("CamaraInterfazVR");
         go.transform.SetParent(baseCam.transform, false);
         var uiCam = go.AddComponent<Camera>();

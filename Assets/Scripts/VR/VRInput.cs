@@ -125,8 +125,13 @@ public static class VRInput
     public static bool PrimaryPressed() { Sample(); return rNow.trigger && !rPrev.trigger; }
     public static bool PrimaryHeld() { Sample(); return rNow.trigger; }
     public static bool SecondaryHeld() { Sample(); return rNow.grip; }
-    /// <summary>Por ahora, el centro de la vista (el láser llegará en la siguiente etapa).</summary>
-    public static Vector2 PointerPosition() => new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+    /// <summary>Pixel del minijuego bajo el láser (VRScreen) o, si no hay, el centro de la vista.</summary>
+    public static Vector2 PointerPosition()
+    {
+        var scr = VRScreen.Current;
+        if (scr != null && scr.HasPointer) return scr.PointerPixel; // láser sobre la pantalla del minijuego
+        return new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+    }
     public static float Scroll() { Sample(); return scrollEvent; }
 
     public static bool InteractPressed() => PrimaryPressed();

@@ -16,7 +16,7 @@ public class VRLaser : MonoBehaviour
 
     public static VRLaser Instance { get; private set; }
     /// <summary>true si el láser está sobre un elemento de interfaz (botón, texto...).</summary>
-    public static bool OverUI => Instance != null && Instance.uiTarget != null;
+    public static bool OverUI => (Instance != null && Instance.uiTarget != null) || (VRScreen.Current != null && VRScreen.Current.OverUI);
 
     LineRenderer line;
     Transform dot;
@@ -132,6 +132,10 @@ public class VRLaser : MonoBehaviour
         var head = VRHeadPose.Current;
         if (hud == null || head == null || EventSystem.current == null) { SetHover(null); return float.PositiveInfinity; }
 
+        // Pantalla de un minijuego con cámara propia: el láser hace de mouse sobre su imagen.
+        float screenD = UpdateScreen(ray);
+        if (screenD < float.PositiveInfinity) return screenD;
+
         Canvas best = null;
         float bestD = maxLength * 2f;
         Vector3 bestP = default;
@@ -192,6 +196,66 @@ public class VRLaser : MonoBehaviour
             }
         }
         return bestD;
+    }
+
+    /// <summary>Láser sobre la pantalla de VRScreen: calcula el pixel apuntado y maneja sus botones.</summary>
+    float UpdateScreen(Ray ray)
+    {
+        var scr = VRScreen.Current;
+        if (scr == null || scr.Quad == null) return float.PositiveInfinity;
+        scr.HasPointer = false;
+        scr.OverUI = false;
+        var q = scr.Quad;
+        var plane = new Plane(q.forward, q.position);
+        if (!plane.Raycast(ray, out float d) || d > maxLength) { SetHover(null); return float.PositiveInfinity; }
+        Vector3 p = ray.GetPoint(d);
+        Vector3 local = q.InverseTransformPoint(p);
+        if (Mathf.Abs(local.x) > 0.5f || Mathf.Abs(local.y) > 0.5f) { SetHover(null); return float.PositiveInfinity; }
+
+        Vector2 sp = new Vector2((local.x + 0.5f) * scr.Texture.width, (local.y + 0.5f) * scr.Texture.height);
+        scr.HasPointer = true;
+        scr.PointerPixel = sp;
+
+        // Botones / paneles de su interfaz.
+        long bestKey = long.MinValue;
+        scr.UICanvas.GetComponentsInChildren(false, canvasBuffer);
+        foreach (var sub in canvasBuffer)
+        {
+            var graphics = UnityEngine.UI.GraphicRegistry.GetRaycastableGraphicsForCanvas(sub);
+            for (int i = 0; i < graphics.Count; i++)
+            {
+                var g = graphics[i];
+                if (g == null || !g.raycastTarget || !g.isActiveAndEnabled || g.depth < 0 || g.canvasRenderer.cull) continue;
+                if (g.canvasRenderer.GetInheritedAlpha() < 0.02f) continue;
+                long key = ((long)sub.sortingOrder << 32) + g.depth;
+                if (key <= bestKey) continue;
+                if (!RectTransformUtility.RectangleContainsScreenPoint(g.rectTransform, sp, scr.Cam)) continue;
+                if (!g.Raycast(sp, scr.Cam)) continue;
+                bestKey = key;
+                uiTarget = g.gameObject;
+            }
+        }
+        scr.OverUI = uiTarget != null;
+        if (ped == null) ped = new PointerEventData(EventSystem.current);
+        ped.Reset();
+        ped.button = PointerEventData.InputButton.Left;
+        ped.position = sp;
+        SetHover(uiTarget);
+        if (uiTarget != null && VRInput.PrimaryPressed())
+        {
+            var clickGO = ExecuteEvents.GetEventHandler<IPointerClickHandler>(uiTarget);
+            if (clickGO != null)
+            {
+                ped.pointerPress = clickGO;
+                ExecuteEvents.Execute(clickGO, ped, ExecuteEvents.pointerDownHandler);
+                ExecuteEvents.Execute(clickGO, ped, ExecuteEvents.pointerUpHandler);
+                ExecuteEvents.Execute(clickGO, ped, ExecuteEvents.pointerClickHandler);
+            }
+        }
+        // El "uiTarget" de la pantalla no cuenta como panel flotante para OverUI de los demás.
+        var keep = uiTarget;
+        uiTarget = null;
+        return keep != null || scr.HasPointer ? d : float.PositiveInfinity;
     }
 
     void SetHover(GameObject go)

@@ -124,7 +124,9 @@ public class VRHud : MonoBehaviour
             if (hud)
             {
                 // Ocultar con X sin tocar Canvas.enabled (los scripts del juego lo usan para sus propias reglas).
-                bool hidden = !HudVisible && !ForceHud();
+                // En minijuegos se quita de enfrente (el minijuego tiene su propio panel).
+                bool inMinigame = GameFlow.Instance != null && GameFlow.Instance.InMinigame;
+                bool hidden = (!HudVisible || inMinigame) && !ForceHud();
                 float d = distance - Mathf.Clamp(c.sortingOrder, 0, 100) * 0.002f;
                 SetPose(c, h.position + viewRot * Vector3.forward * d, viewRot, (hidden ? 0.0001f : hudWidth) / Mathf.Max(1f, rt.sizeDelta.x));
             }

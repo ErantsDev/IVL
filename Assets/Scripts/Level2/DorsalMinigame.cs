@@ -151,8 +151,11 @@ public class DorsalMinigame : MonoBehaviour
         minigameCamera.transform.SetPositionAndRotation(center + Vector3.up * cameraHeight, Quaternion.LookRotation(Vector3.down, fwd));
         if (VRMode.Active)
         {
-            // Con gafas no se cambia de cámara: se rasura / desinfecta mirando al conejo, con el láser.
+            // Con gafas la vista cenital se muestra en una pantalla flotante (no se cambia la vista
+            // de las gafas) y el láser hace de mouse sobre ella: misma dinámica que en PC.
+            minigameCamera.gameObject.SetActive(true);
             playerCam = null;
+            VRScreen.Show(minigameCamera, panel != null ? (RectTransform)panel.transform : null);
         }
         else
         {
@@ -187,9 +190,9 @@ public class DorsalMinigame : MonoBehaviour
         if (!IsActive) return;
         IsActive = false;
         if (panel != null) panel.SetActive(false);
+        if (VRMode.Active) VRScreen.Hide(); // devuelve la interfaz a su lugar antes de apagar la cámara
         if (minigameCamera != null) minigameCamera.gameObject.SetActive(false);
         if (playerCam != null) playerCam.enabled = true;
-        if (vrBrush != null) vrBrush.gameObject.SetActive(false);
         if (patchCollider != null) patchCollider.enabled = false;
         if (buzz != null) buzz.Stop();
         if (rabbit != null) rabbit.ForcedMood = null;
@@ -243,13 +246,14 @@ public class DorsalMinigame : MonoBehaviour
 
         Vector2 mouse = MousePosition();
         bool pressing = MouseHeld() && !PointerOverUI();
-        Ray laserRay = default;
-        bool vr = VRMode.Active && VRLaser.TryGetRay(out laserRay);
-        Ray ray = vr ? laserRay : minigameCamera.ScreenPointToRay(mouse);
-        bool onPatch = patchCollider.Raycast(ray, out var hit, vr ? 4f : 2f);
+        // Con gafas, si el láser no está sobre la pantalla del minijuego, no se rasura.
+        bool noPointer = VRMode.Active && (VRScreen.Current == null || !VRScreen.Current.HasPointer);
+        if (noPointer) pressing = false;
+        Ray ray = minigameCamera.ScreenPointToRay(mouse);
+        RaycastHit hit = default;
+        bool onPatch = !noPointer && patchCollider.Raycast(ray, out hit, 2f);
 
-        if (vr) UpdateVRBrush(onPatch, hit);
-        else UpdateCursor(mouse, onPatch);
+        UpdateCursor(mouse, onPatch);
 
         if (pressing && onPatch)
         {
@@ -781,37 +785,15 @@ public class DorsalMinigame : MonoBehaviour
         else if (!on && buzz.isPlaying) buzz.Stop();
     }
 
-    Transform vrBrush;
-    Material vrBrushMat;
-
-    /// <summary>Con gafas: un disco sobre el lomo marca dónde y de qué tamaño pasa la rasuradora / gasa.</summary>
-    void UpdateVRBrush(bool onPatch, RaycastHit hit)
-    {
-        if (vrBrush == null)
-        {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            Destroy(go.GetComponent<Collider>());
-            go.name = "PinceVR";
-            vrBrushMat = new Material(Shader.Find("Sprites/Default"));
-            var r = go.GetComponent<Renderer>();
-            r.sharedMaterial = vrBrushMat;
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            vrBrush = go.transform;
-        }
-        bool show = IsActive && !finished && onPatch;
-        vrBrush.gameObject.SetActive(show);
-        if (brushCursor != null) brushCursor.gameObject.SetActive(false);
-        if (!show) return;
-        float d = 2f * (kind == Kind.Shave ? shaveBrushCm : gauzeBrushCm) * 0.01f;
-        vrBrush.SetPositionAndRotation(hit.point + hit.normal * 0.002f, Quaternion.FromToRotation(Vector3.up, hit.normal));
-        vrBrush.localScale = new Vector3(d, 0.001f, d);
-        vrBrushMat.color = MouseHeld() ? new Color(1f, 1f, 1f, 0.55f) : new Color(1f, 1f, 1f, 0.3f);
-    }
-
     void UpdateCursor(Vector2 mouse, bool onPatch)
     {
         if (canvas == null) return;
-        float scaleFactor = canvas.scaleFactor > 0f ? canvas.scaleFactor : 1f;
+        // Lienzo donde está el cursor (en VR, el de la pantalla flotante, con su cámara).
+        var cv = brushCursor != null ? brushCursor.GetComponentInParent<Canvas>() : canvas;
+        if (cv == null) cv = canvas;
+        cv = cv.rootCanvas;
+        Camera uiCam = cv.renderMode == RenderMode.ScreenSpaceOverlay ? null : cv.worldCamera;
+        float scaleFactor = cv.scaleFactor > 0f ? cv.scaleFactor : 1f;
 
         // Píxeles de pantalla por centímetro a la altura del lomo.
         Vector3 c = PatchCenterWorld();
@@ -826,7 +808,7 @@ public class DorsalMinigame : MonoBehaviour
             float d = 2f * brushCm * pxPerCm / scaleFactor;
             brushCursor.sizeDelta = new Vector2(d, d);
             var parentRt = (RectTransform)brushCursor.parent;
-            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(parentRt, mouse, null, out var local))
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(parentRt, mouse, uiCam, out var local))
                 brushCursor.localPosition = local;
             var img = brushCursor.GetComponent<Graphic>();
             if (img != null) img.color = onPatch ? new Color(1f, 1f, 1f, 0.95f) : new Color(1f, 1f, 1f, 0.35f);

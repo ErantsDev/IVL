@@ -267,8 +267,11 @@ public class Level3Manager : MonoBehaviour, ILevelController
         var g = Grabber.Held;
         if (g == null) return;
         var cam = Grabber.Cam.transform;
-        Vector3 f = cam.forward; f.y = 0f;
-        if (f.sqrMagnitude < 1e-5f) f = cam.up;
+        // Con gafas el giro sale de la mano (el control), no de la cabeza: mover la cabeza no
+        // debe girar el tubo ni la micropipeta.
+        var hand = VRMode.Active && VRControllerPose.Right != null ? VRControllerPose.Right.transform : null;
+        Vector3 f = hand != null ? hand.forward : cam.forward; f.y = 0f;
+        if (f.sqrMagnitude < 1e-5f) f = hand != null ? hand.up : cam.up;
         var yaw = Quaternion.LookRotation(f.normalized, Vector3.up);
         Quaternion target;
         if ((sample != null && g == sample.Grabbable) || (balance != null && g == balance.Grabbable))
@@ -277,7 +280,7 @@ public class Level3Manager : MonoBehaviour, ILevelController
             target = pipette.UprightRotation(-f);
         else return;
         if (g.Body.isKinematic) return;
-        g.Body.MoveRotation(Quaternion.Slerp(g.Body.rotation, target, 0.4f));
+        g.Body.MoveRotation(Quaternion.Slerp(g.Body.rotation, target, VRMode.Active ? 0.15f : 0.4f));
         g.Body.angularVelocity = Vector3.zero;
     }
 

@@ -60,6 +60,10 @@ public class ObjectGrabber : MonoBehaviour
     [Tooltip("Con gafas: velocidad al acercar / alejar con el joystick (m/s).")]
     public float vrHoldSpeed = 0.8f;
     Quaternion vrHoldRotation = Quaternion.identity;
+    [Tooltip("Con gafas: suavizado del punto de la mano (más alto = sigue más rápido, menos suave).")]
+    public float vrSmoothing = 22f;
+    Vector3 vrSmoothTarget;
+    bool vrHasSmooth;
 
     static readonly RaycastHit[] hitBuffer = new RaycastHit[32];
 
@@ -235,7 +239,15 @@ public class ObjectGrabber : MonoBehaviour
 
         Vector3 target = cam.transform.position + cam.transform.forward * holdDistance + cam.transform.TransformDirection(held.holdViewOffset);
         var vrHand = VRMode.Active && VRControllerPose.Right != null ? VRControllerPose.Right.transform : null;
-        if (vrHand != null) target = vrHand.position + vrHand.forward * vrHoldForward; // con gafas: en la mano
+        if (vrHand != null)
+        {
+            // Con gafas: en la mano. El punto se suaviza un poco para que el temblor natural de la
+            // mano (y el del rastreo) no haga brincar los objetos delgados (tubos, micropipeta).
+            Vector3 raw = vrHand.position + vrHand.forward * vrHoldForward;
+            vrSmoothTarget = vrHasSmooth ? Vector3.Lerp(vrSmoothTarget, raw, 1f - Mathf.Exp(-vrSmoothing * Time.fixedDeltaTime)) : raw;
+            vrHasSmooth = true;
+            target = vrSmoothTarget;
+        }
         Vector3 toTarget = target - held.Body.worldCenterOfMass;
         Vector3 velocity = Vector3.ClampMagnitude(toTarget * followStrength, maxFollowSpeed);
 #if UNITY_6000_0_OR_NEWER
@@ -243,14 +255,20 @@ public class ObjectGrabber : MonoBehaviour
 #else
         held.Body.velocity = velocity;
 #endif
-        if (vrHand != null)
+        if (vrHand != null && !held.allowRotate)
+        {
+            // Objetos que el nivel mantiene derechos (tubos, micropipeta): no se giran con la mano,
+            // así no pelean con el script del nivel (eso los hacía moverse a tirones).
+            held.Body.angularVelocity *= 0.5f;
+        }
+        else if (vrHand != null)
         {
             // Gira junto con la mano, conservando cómo estaba al agarrarlo.
             Quaternion delta = (vrHand.rotation * vrHoldRotation) * Quaternion.Inverse(held.Body.rotation);
             delta.ToAngleAxis(out float angle, out Vector3 axis);
             if (angle > 180f) angle -= 360f;
             held.Body.angularVelocity = float.IsFinite(axis.x) && Mathf.Abs(angle) > 0.01f
-                ? axis.normalized * (angle * Mathf.Deg2Rad * followStrength * 0.6f)
+                ? axis.normalized * (angle * Mathf.Deg2Rad * followStrength * 0.45f)
                 : Vector3.zero;
         }
         else if (!isRotating)
@@ -278,6 +296,7 @@ public class ObjectGrabber : MonoBehaviour
             {
                 vrHoldRotation = Quaternion.Inverse(VRControllerPose.Right.transform.rotation) * g.Body.rotation;
                 vrHoldForward = vrHoldDefault;
+                vrHasSmooth = false;
             }
         }
         g.RaiseGrabbed();
