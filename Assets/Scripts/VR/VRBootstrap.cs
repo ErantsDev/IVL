@@ -1,6 +1,5 @@
 using System.Collections;
 using UnityEngine;
-using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 
 /// <summary>
@@ -20,6 +19,9 @@ using UnityEngine.SceneManagement;
 public class VRBootstrap : MonoBehaviour
 {
     bool vrReady;
+
+    [Tooltip("Radio del cuerpo del jugador con gafas (m). En PC es 0.3.")]
+    public float vrBodyRadius = 0.2f;
 
     [Tooltip("Entrar directo al nivel al estar en el menú (mientras no haya menús en VR).")]
     public bool autoStart = true;
@@ -75,6 +77,9 @@ public class VRBootstrap : MonoBehaviour
         {
             if (pc.cameraTransform != null) AttachHead(pc.cameraTransform, true);
             if (pc.GetComponent<VRSnapTurn>() == null) pc.gameObject.AddComponent<VRSnapTurn>();
+            // Cuerpo más delgado: con gafas el usuario se acerca a la mesa inclinándose de verdad.
+            var cc = pc.GetComponent<CharacterController>();
+            if (cc != null && cc.radius > vrBodyRadius) cc.radius = vrBodyRadius;
         }
 
         // Paneles flotantes, mira y avisos (un objeto por escena: los Canvas son de la escena).
@@ -110,34 +115,8 @@ public class VRBootstrap : MonoBehaviour
             VRControllerPose.Create(offset, UnityEngine.XR.XRNode.RightHand, head);
         }
 
+        // La interfaz del minijuego de pantalla completa vive en su propia capa: los ojos no la dibujan.
         var c = cam.GetComponent<Camera>();
-        if (c != null) AddUICamera(c);
-    }
-
-    /// <summary>
-    /// Cámara de interfaz apilada (Overlay de URP): dibuja sólo la capa UI, después de la escena y
-    /// con su propio depth, así los paneles nunca quedan tapados por una pared o un mueble.
-    /// </summary>
-    static void AddUICamera(Camera baseCam)
-    {
-        int ui = 1 << VRHud.UILayer;
-        baseCam.cullingMask &= ~(ui | (1 << VRScreen.ScreenUILayer));
-        var go = new GameObject("CamaraInterfazVR");
-        go.transform.SetParent(baseCam.transform, false);
-        var uiCam = go.AddComponent<Camera>();
-        uiCam.cullingMask = ui;
-        uiCam.clearFlags = CameraClearFlags.Depth;
-        uiCam.nearClipPlane = 0.05f;
-        uiCam.farClipPlane = 30f;
-        uiCam.fieldOfView = baseCam.fieldOfView;
-        uiCam.depth = baseCam.depth; // el espejo busca la cámara de mayor depth: que siga siendo la de los ojos
-        var uiData = uiCam.GetUniversalAdditionalCameraData();
-        uiData.renderType = CameraRenderType.Overlay;
-        uiData.renderPostProcessing = false;
-        uiData.renderShadows = false;
-        var baseData = baseCam.GetUniversalAdditionalCameraData();
-        if (baseData.renderType == CameraRenderType.Base && !baseData.cameraStack.Contains(uiCam))
-            baseData.cameraStack.Add(uiCam);
-
+        if (c != null) c.cullingMask &= ~(1 << VRScreen.ScreenUILayer);
     }
 }

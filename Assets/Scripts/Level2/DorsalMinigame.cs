@@ -149,20 +149,11 @@ public class DorsalMinigame : MonoBehaviour
         Vector3 center = PatchCenterWorld();
         Vector3 fwd = Vector3.ProjectOnPlane(rabbit.transform.forward, Vector3.up).normalized;
         minigameCamera.transform.SetPositionAndRotation(center + Vector3.up * cameraHeight, Quaternion.LookRotation(Vector3.down, fwd));
-        if (VRMode.Active)
-        {
-            // Con gafas la vista cenital se muestra en una pantalla flotante (no se cambia la vista
-            // de las gafas) y el láser hace de mouse sobre ella: misma dinámica que en PC.
-            minigameCamera.gameObject.SetActive(true);
-            playerCam = null;
-            VRScreen.Show(minigameCamera, panel != null ? (RectTransform)panel.transform : null);
-        }
-        else
-        {
-            minigameCamera.gameObject.SetActive(true);
-            playerCam = ObjectGrabber.Instance != null ? ObjectGrabber.Instance.Cam : null;
-            if (playerCam != null) playerCam.enabled = false;
-        }
+        minigameCamera.gameObject.SetActive(true);
+        playerCam = ObjectGrabber.Instance != null ? ObjectGrabber.Instance.Cam : null;
+        if (playerCam != null) playerCam.enabled = false;
+        // Con gafas la vista cenital ocupa la vista como en PC; el control derecho mueve el puntero.
+        if (VRMode.Active) VRScreen.Show(minigameCamera, panel != null ? (RectTransform)panel.transform : null);
 
         EnsureEffects();
 

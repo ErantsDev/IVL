@@ -205,6 +205,19 @@ public class ObjectGrabber : MonoBehaviour
             holdDistance = Mathf.Clamp(holdDistance + Mathf.Sign(scroll) * 0.15f, minHoldDistance, maxHoldDistance);
     }
 
+    Transform vrHandBone;
+
+    /// <summary>Con gafas: palma de la mano derecha del avatar (si no hay avatar, el control).</summary>
+    Vector3 VRPalm(Transform controller)
+    {
+        if (vrHandBone == null && PlayerAvatar.Instance != null && PlayerAvatar.Instance.Driver != null)
+        {
+            var anim = PlayerAvatar.Instance.Driver.GetComponent<Animator>();
+            if (anim != null && anim.isHuman) vrHandBone = anim.GetBoneTransform(HumanBodyBones.RightHand);
+        }
+        return vrHandBone != null ? vrHandBone.position + controller.forward * 0.07f : controller.position;
+    }
+
     sealed class HitComparer : System.Collections.Generic.IComparer<RaycastHit>
     {
         public static readonly HitComparer Instance = new HitComparer();
@@ -243,7 +256,7 @@ public class ObjectGrabber : MonoBehaviour
         {
             // Con gafas: en la mano. El punto se suaviza un poco para que el temblor natural de la
             // mano (y el del rastreo) no haga brincar los objetos delgados (tubos, micropipeta).
-            Vector3 raw = vrHand.position + vrHand.forward * vrHoldForward;
+            Vector3 raw = VRPalm(vrHand) + vrHand.forward * vrHoldForward;
             vrSmoothTarget = vrHasSmooth ? Vector3.Lerp(vrSmoothTarget, raw, 1f - Mathf.Exp(-vrSmoothing * Time.fixedDeltaTime)) : raw;
             vrHasSmooth = true;
             target = vrSmoothTarget;

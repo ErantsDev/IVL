@@ -494,12 +494,9 @@ public class RabbitController : Interactable
             var camObj = ObjectGrabber.Instance != null ? ObjectGrabber.Instance.Cam : Camera.main;
             if (camObj == null) return;
             var cam = camObj.transform;
-            // Con gafas mover la cabeza es natural: lo que asusta al conejo es caminar o girar el cuerpo.
-            if (VRMode.Active)
-            {
-                var body = camObj.GetComponentInParent<PlayerController>();
-                if (body != null) cam = body.transform;
-            }
+            // Con gafas mover la cabeza es natural: lo que asusta al conejo es cómo se mueve él mismo
+            // en los brazos (caminar rápido, girar o mover los brazos de golpe).
+            if (VRMode.Active) cam = transform;
             Vector3 e = cam.eulerAngles;
             if (hasLast && Time.deltaTime > 0f)
             {
@@ -650,37 +647,46 @@ public class RabbitController : Interactable
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 1f - Mathf.Exp(-carryRotationSpeed * Time.deltaTime));
     }
 
-    [Header("VR: conejo abrazado")]
-    [Tooltip("Con gafas: qué tan abajo de los ojos va el conejo (m), a la altura del pecho.")]
-    public float vrHugDown = 0.42f;
-    [Tooltip("Con gafas: qué tan adelante del pecho (m).")]
-    public float vrHugForward = 0.2f;
-    [Tooltip("Con gafas: corrimiento hacia el brazo izquierdo (m).")]
-    public float vrHugSide = -0.04f;
+    [Header("VR: conejo en brazos")]
+    [Tooltip("Con gafas: qué tan abajo de las manos queda el centro del conejo (m): descansa sobre ellas.")]
+    public float vrRestOnHands = 0.05f;
 
     /// <summary>
-    /// Con gafas: el conejo va abrazado contra el pecho, recostado sobre el antebrazo izquierdo con
-    /// la cabeza metida hacia el codo (sujeción correcta) y la otra mano sobre el lomo. Sigue al
-    /// cuerpo del avatar, no a la cabeza: voltear a verlo no lo mueve.
+    /// Con gafas: el conejo va entre las dos manos del avatar (que siguen a los controles),
+    /// recostado de lado con la cabeza hacia la mano izquierda y apoyado sobre ellas. Al juntar
+    /// las manos frente al pecho queda abrazado. Si sólo hay una mano, va sobre esa.
     /// </summary>
     bool VRCarry(Transform head)
     {
-        var bodyT = PlayerAvatar.Instance != null && PlayerAvatar.Instance.Driver != null ? PlayerAvatar.Instance.Driver.transform : null;
-        Vector3 fwd = bodyT != null ? bodyT.forward : Vector3.ProjectOnPlane(head.forward, Vector3.up);
-        fwd.y = 0f;
-        if (fwd.sqrMagnitude < 1e-4f) fwd = Vector3.ProjectOnPlane(head.up, Vector3.up);
-        fwd.Normalize();
-        Vector3 right = Vector3.Cross(Vector3.up, fwd);
-
-        // Al acariciarlo sube un poco, para ver la mano en su lomo.
-        float lift = 0.06f * Mathf.SmoothStep(0f, 1f, petHand);
-        Vector3 targetPos = head.position + Vector3.down * (vrHugDown - lift) + fwd * vrHugForward + right * vrHugSide;
-        // Cabeza hacia la izquierda (el codo), un poco abajo; el vientre hacia el pecho.
-        Quaternion targetRot = Quaternion.LookRotation(-right, Vector3.up) * Quaternion.Euler(12f, 0f, -18f);
+        Vector3 l, r;
+        if (!VRHandPoints(out l, out r)) return false;
+        Vector3 mid = (l + r) * 0.5f;
+        Vector3 across = r - l; across.y = 0f;
+        Vector3 bodyFwd = Vector3.ProjectOnPlane(head.forward, Vector3.up);
+        if (bodyFwd.sqrMagnitude < 1e-4f) bodyFwd = Vector3.ProjectOnPlane(head.up, Vector3.up);
+        // Cabeza del conejo hacia la mano izquierda (de derecha a izquierda).
+        Vector3 rabbitFwd = across.sqrMagnitude > 0.0025f ? -across.normalized : Vector3.Cross(bodyFwd.normalized, Vector3.up);
+        Quaternion targetRot = Quaternion.LookRotation(rabbitFwd, Vector3.up);
         if (petVisual > 0.001f)
             targetRot *= Quaternion.Euler(8f * petVisual, 0f, Mathf.Sin(Time.time * 7f) * 4f * petVisual);
-        transform.position = Vector3.SmoothDamp(transform.position, targetPos, ref carryVelocity, carryPositionSmoothTime);
+        Vector3 targetPos = mid + Vector3.up * vrRestOnHands;
+        transform.position = Vector3.SmoothDamp(transform.position, targetPos, ref carryVelocity, carryPositionSmoothTime * 0.5f);
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 1f - Mathf.Exp(-carryRotationSpeed * Time.deltaTime));
+        return true;
+    }
+
+    /// <summary>Palmas de las manos del avatar (o de los controles si no hay avatar).</summary>
+    static bool VRHandPoints(out Vector3 left, out Vector3 right)
+    {
+        left = right = default;
+        var lc = VRControllerPose.Left;
+        var rc = VRControllerPose.Right;
+        if (lc == null && rc == null) return false;
+        var anim = PlayerAvatar.Instance != null && PlayerAvatar.Instance.Driver != null ? PlayerAvatar.Instance.Driver.GetComponent<Animator>() : null;
+        Transform lh = anim != null && anim.isHuman ? anim.GetBoneTransform(HumanBodyBones.LeftHand) : null;
+        Transform rh = anim != null && anim.isHuman ? anim.GetBoneTransform(HumanBodyBones.RightHand) : null;
+        left = lh != null ? lh.position : (lc != null ? lc.transform.position : rc.transform.position);
+        right = rh != null ? rh.position : (rc != null ? rc.transform.position : lc.transform.position);
         return true;
     }
 

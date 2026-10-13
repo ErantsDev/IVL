@@ -98,7 +98,7 @@ public class VRHud : MonoBehaviour
 
         if (Time.unscaledTime >= nextScan)
         {
-            nextScan = Time.unscaledTime + 0.5f;
+            nextScan = Time.unscaledTime + 1f;
             Scan(head);
         }
 
@@ -123,12 +123,12 @@ public class VRHud : MonoBehaviour
             var rt = (RectTransform)c.transform;
             if (hud)
             {
-                // Ocultar con X sin tocar Canvas.enabled (los scripts del juego lo usan para sus propias reglas).
-                // En minijuegos se quita de enfrente (el minijuego tiene su propio panel).
+                // X oculta sólo el objetivo y la lista de materiales (también durante los minijuegos);
+                // avisos, medidor de calma del conejo, temporizadores y barras de acción siguen visibles.
                 bool inMinigame = GameFlow.Instance != null && GameFlow.Instance.InMinigame;
-                bool hidden = (!HudVisible || inMinigame) && !ForceHud();
+                SetInfoHidden(c, (!HudVisible || inMinigame) && !ForceHud());
                 float d = distance - Mathf.Clamp(c.sortingOrder, 0, 100) * 0.002f;
-                SetPose(c, h.position + viewRot * Vector3.forward * d, viewRot, (hidden ? 0.0001f : hudWidth) / Mathf.Max(1f, rt.sizeDelta.x));
+                SetPose(c, h.position + viewRot * Vector3.forward * d, viewRot, hudWidth / Mathf.Max(1f, rt.sizeDelta.x));
             }
             else
             {
@@ -148,6 +148,26 @@ public class VRHud : MonoBehaviour
 
         TranslateTexts();
         UpdatePrompt(head);
+    }
+
+    /// <summary>Partes del HUD que oculta el botón X (información de consulta, no avisos).</summary>
+    static readonly HashSet<string> InfoParts = new HashSet<string>
+        { "HudFondo", "ModeText", "AlumnoText", "CounterText", "ObjectivePanel", "ChecklistPanel", "TimerText" };
+    readonly Dictionary<Transform, Vector3> infoScale = new Dictionary<Transform, Vector3>();
+    bool infoHidden;
+
+    void SetInfoHidden(Canvas c, bool hide)
+    {
+        if (hide == infoHidden && infoScale.Count > 0) return;
+        infoHidden = hide;
+        var t = c.transform;
+        for (int i = 0; i < t.childCount; i++)
+        {
+            var ch = t.GetChild(i);
+            if (!InfoParts.Contains(ch.name)) continue;
+            if (!infoScale.ContainsKey(ch)) infoScale[ch] = ch.localScale;
+            ch.localScale = hide ? Vector3.zero : infoScale[ch];
+        }
     }
 
     /// <summary>En pausa o resultados el HUD se muestra aunque se haya ocultado con X.</summary>
@@ -179,12 +199,12 @@ public class VRHud : MonoBehaviour
             Convert(c, head, c == hudCanvas);
         }
 
-        // Capa UI (la dibuja la cámara de interfaz encima de todo) y textos a traducir.
+        // Encima de todo (material sin prueba de profundidad) y textos a traducir.
         texts.Clear();
         foreach (var c in panels)
         {
             if (c == null) continue;
-            foreach (var t in c.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = UILayer;
+            VROnTop.Apply(c.transform);
             c.GetComponentsInChildren(true, tmpBuffer);
             texts.AddRange(tmpBuffer);
         }
@@ -288,6 +308,7 @@ public class VRHud : MonoBehaviour
         promptText.alignment = TextAlignmentOptions.Center;
         promptText.richText = true;
         promptText.raycastTarget = false;
+        VROnTop.Apply(go.transform);
     }
 
     void UpdatePrompt(VRHeadPose head)

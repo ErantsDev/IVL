@@ -286,7 +286,6 @@ public class AvatarAnimatorDriver : MonoBehaviour
     bool handAxesReady;
 
     float vrBodyYaw, vrCrouch;
-    bool vrHugging;
     bool vrYawInit;
     Quaternion vrBaseLocalRot;
 
@@ -346,30 +345,6 @@ public class AvatarAnimatorDriver : MonoBehaviour
             SetFoot(AvatarIKGoal.RightFoot, AvatarIKHint.RightKnee, Vector3.zero, Quaternion.identity, 0f, 1f);
         }
 
-        // Con el conejo en brazos: lo abraza (brazo izquierdo por debajo, mano derecha sobre el lomo;
-        // al acariciarlo, la mano derecha sigue al control).
-        var heldRabbit = ObjectGrabber.Instance != null && ObjectGrabber.Instance.Held != null
-            ? ObjectGrabber.Instance.Held.GetComponent<RabbitController>() : null;
-        vrHugging = heldRabbit != null && heldRabbit.Place == RabbitPlace.Carried;
-        if (vrHugging)
-        {
-            var rb = heldRabbit.transform;
-            Vector3 c = CenterOf(heldRabbit.Grabbable);
-            float s = transform.lossyScale.y;
-            Vector3 under = c - Vector3.up * 0.08f * s - rb.forward * 0.04f;          // antebrazo por debajo
-            Vector3 back = c + Vector3.up * 0.09f * s + rb.forward * 0.03f;           // mano sobre el lomo
-            rightHandW = Mathf.MoveTowards(rightHandW, 1f, dt * 4f);
-            leftHandW = Mathf.MoveTowards(leftHandW, 1f, dt * 4f);
-            bool petting = heldRabbit.IsBeingPetted && VRControllerPose.Right != null;
-            ApplyHand(AvatarIKGoal.LeftHand, AvatarIKHint.LeftElbow, leftHandW, under, -1f);
-            if (petting) VRHand(AvatarIKGoal.RightHand, AvatarIKHint.RightElbow, rightHandW, VRControllerPose.Right.transform, 1f);
-            else ApplyHand(AvatarIKGoal.RightHand, AvatarIKHint.RightElbow, rightHandW, back, 1f);
-            anim.SetIKRotationWeight(AvatarIKGoal.LeftHand, 0f);
-            if (!petting) anim.SetIKRotationWeight(AvatarIKGoal.RightHand, 0f);
-            petW = 0f;
-            return;
-        }
-
         // Manos a los controles.
         var r = VRControllerPose.Right;
         var l = VRControllerPose.Left;
@@ -402,7 +377,7 @@ public class AvatarAnimatorDriver : MonoBehaviour
     /// </summary>
     void AlignVRWrists()
     {
-        if (!handAxesReady || vrHugging) return; // abrazando al conejo, las manos no apuntan al control
+        if (!handAxesReady) return;
         AlignWrist(HumanBodyBones.RightHand, rightHandAxis, VRControllerPose.Right, rightHandW);
         AlignWrist(HumanBodyBones.LeftHand, leftHandAxis, VRControllerPose.Left, leftHandW);
     }

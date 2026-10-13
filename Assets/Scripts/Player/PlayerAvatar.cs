@@ -101,6 +101,17 @@ public class PlayerAvatar : MonoBehaviour
         }
         if (!float.IsNaN(groundOffset))
             Current.transform.localPosition = new Vector3(0f, groundOffset, 0f);
+
+        // Con gafas: el cuerpo sigue a la cabeza cuando el usuario se inclina o da un paso real
+        // (por ejemplo hacia la mesa), así los brazos alcanzan a los controles.
+        var head = VRMode.Active ? VRHeadPose.Current : null;
+        if (head != null)
+        {
+            Vector3 local = transform.InverseTransformPoint(head.transform.position);
+            Vector3 back = transform.InverseTransformDirection(Current.transform.forward) * 0.1f; // el cuello va detrás de los ojos
+            var lp = Current.transform.localPosition;
+            Current.transform.localPosition = new Vector3(local.x - back.x, lp.y, local.z - back.z);
+        }
     }
 
     /// <summary>Copia de cada malla del avatar que sólo proyecta sombra, en la capa normal.</summary>
