@@ -36,6 +36,18 @@ public static class VRLobby
         root.rotation = Quaternion.Euler(0f, rig.eulerAngles.y, 0f);
         root.gameObject.layer = Layer;
 
+        // El lobby sólo existe para la cámara del menú: las demás no dibujan su capa y, además,
+        // se apaga junto con los controles del menú al empezar el nivel.
+        foreach (var other in Object.FindObjectsByType<Camera>(FindObjectsInactive.Include))
+            if (other != cam) other.cullingMask &= ~(1 << Layer);
+        var vis = rig.GetComponent<VRRigVisibility>();
+        if (vis != null)
+        {
+            var list = new System.Collections.Generic.List<GameObject>(vis.controllers ?? new GameObject[0]);
+            list.Add(root.gameObject);
+            vis.controllers = list.ToArray();
+        }
+
         var shader = Shader.Find("Sprites/Default");
         // Anillo claro alrededor y piso oscuro encima: da referencia de dónde está el suelo.
         Disc(root, "Anillo", shader, 3.2f, new Color(0.16f, 0.47f, 0.86f, 0.55f), 2998, -0.004f);

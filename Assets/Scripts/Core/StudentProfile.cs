@@ -52,6 +52,16 @@ public static class StudentProfile
         Correo = PlayerPrefs.GetString(KeyEmail, "");
         int s = PlayerPrefs.GetInt(KeySex, 0);
         Sexo = s == 1 ? Sexo.Hombre : s == 2 ? Sexo.Mujer : Sexo.SinElegir;
+
+        // En las gafas escribir es incómodo: para la demostración el formulario ya viene lleno
+        // (sólo si nunca se han guardado datos). En PC no cambia nada.
+        if (VRMode.Active && Nombre.Length == 0 && Matricula.Length == 0 && Correo.Length == 0)
+        {
+            Nombre = "Martin Emmanuel Erants Solorzano";
+            Matricula = "100016732";
+            Correo = "demo@unach.mx";
+            Sexo = Sexo.Hombre;
+        }
     }
 
     /// <summary>Guarda los datos ya validados (ver Validate) y los registra en la base de datos.</summary>
