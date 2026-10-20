@@ -40,6 +40,14 @@ public class VRHud : MonoBehaviour
     [Tooltip("Grados que hay que voltear para que el panel vuelva al frente.")]
     public float frontRecenterAngle = 70f;
 
+    [Header("Menú principal (lobby)")]
+    [Tooltip("El menú conserva su lienzo de 1920×1080 y se centra el panel principal.")]
+    public float menuWidth = 1.65f;
+    public float menuDistance = 1.5f;
+    [Tooltip("Centro del menú respecto a los ojos (m): un poco abajo, cómodo para leer.")]
+    public float menuRaise = -0.05f;
+    Canvas menuCanvas;
+
     class FrontInfo { public bool wasVisible; public float yaw; public Vector3 pos; }
     readonly Dictionary<Canvas, FrontInfo> front = new Dictionary<Canvas, FrontInfo>();
 
@@ -140,16 +148,19 @@ public class VRHud : MonoBehaviour
             else
             {
                 var inf = front[c];
+                bool menu = c == menuCanvas;
                 bool visible = c.isActiveAndEnabled && AnyActiveChild(c);
                 float yaw = Quaternion.LookRotation(Vector3.ProjectOnPlane(h.forward, Vector3.up).sqrMagnitude > 1e-4f ? Vector3.ProjectOnPlane(h.forward, Vector3.up) : h.up).eulerAngles.y;
                 if (visible && (!inf.wasVisible || Mathf.Abs(Mathf.DeltaAngle(inf.yaw, yaw)) > frontRecenterAngle))
                 {
                     inf.yaw = yaw;
-                    inf.pos = h.position + Quaternion.Euler(0f, yaw, 0f) * Vector3.forward * frontDistance + Vector3.up * frontRaise;
+                    inf.pos = menu
+                        ? h.position + Quaternion.Euler(0f, yaw, 0f) * Vector3.forward * menuDistance + Vector3.up * menuRaise
+                        : h.position + Quaternion.Euler(0f, yaw, 0f) * Vector3.forward * frontDistance + Vector3.up * frontRaise;
                 }
                 inf.wasVisible = visible;
                 Vector3 p = inf.pos - Quaternion.Euler(0f, inf.yaw, 0f) * Vector3.forward * (Mathf.Clamp(c.sortingOrder, 0, 100) * 0.002f);
-                SetPose(c, p, Quaternion.Euler(0f, inf.yaw, 0f), frontWidth / Mathf.Max(1f, rt.sizeDelta.x));
+                SetPose(c, p, Quaternion.Euler(0f, inf.yaw, 0f), (menu ? menuWidth : frontWidth) / Mathf.Max(1f, rt.sizeDelta.x));
             }
         }
 
@@ -205,6 +216,7 @@ public class VRHud : MonoBehaviour
             if (c == promptCanvas || !c.isRootCanvas || c.renderMode != RenderMode.ScreenSpaceOverlay) continue;
             if (c.GetComponentInParent<FpsCounter>() != null) { c.enabled = false; continue; }
             Convert(c, head, c == hudCanvas);
+            if (IsMenuCanvas(c)) { menuCanvas = c; LayoutMenu(c); }
         }
 
         // Encima de todo (material sin prueba de profundidad) y textos a traducir.
@@ -228,6 +240,41 @@ public class VRHud : MonoBehaviour
     }
 
     // ------------------------------------------------------------------
+    //  Menú principal: un panel centrado, como un lobby
+    // ------------------------------------------------------------------
+
+    static bool IsMenuCanvas(Canvas c)
+    {
+        var flow = GameFlow.Instance;
+        if (flow == null || flow.menuScreen == null) return false;
+        var mc = flow.menuScreen.GetComponentInParent<Canvas>(true);
+        return mc != null && mc.rootCanvas == c;
+    }
+
+    /// <summary>
+    /// En PC el menú es una barra a la izquierda sobre el laboratorio desenfocado. En VR se centra
+    /// el panel principal y se quita el oscurecido de fondo (atrás está el lobby).
+    /// </summary>
+    static void LayoutMenu(Canvas c)
+    {
+        foreach (var rt in c.GetComponentsInChildren<RectTransform>(true))
+        {
+            if (rt.name == "PanelPrincipal" && rt.parent != null && rt.parent.name == "PantallaMenu")
+            {
+                rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+                rt.pivot = new Vector2(0.5f, 0.5f);
+                rt.sizeDelta = new Vector2(rt.sizeDelta.x, 940f);
+                rt.anchoredPosition = Vector2.zero;
+            }
+            else if (rt.name == "Oscurecer" || (rt.name == "PanelOpciones" && rt.parent == c.transform))
+            {
+                var img = rt.GetComponent<Image>();
+                if (img != null) { var col = img.color; col.a = 0f; img.color = col; }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
     //  Fondos más opacos
     // ------------------------------------------------------------------
 
@@ -246,6 +293,9 @@ public class VRHud : MonoBehaviour
         {
             if (img == null || solidDone.Contains(img)) continue;
             solidDone.Add(img);
+            // Los oscurecedores de pantalla completa no: serían un rectángulo negro enorme.
+            var irt = img.rectTransform;
+            if (img.sprite == null && irt.anchorMin == Vector2.zero && irt.anchorMax == Vector2.one) continue;
             var col = img.color;
             float bright = Mathf.Max(col.r, Mathf.Max(col.g, col.b));
             if (bright < 0.35f && col.a >= 0.15f && col.a < SolidAlpha)
@@ -267,7 +317,7 @@ public class VRHud : MonoBehaviour
             if (scaler.uiScaleMode == CanvasScaler.ScaleMode.ScaleWithScreenSize) size = scaler.referenceResolution;
             scaler.enabled = false;
         }
-        size = isHud ? hudCanvasSize : frontCanvasSize;
+        size = isHud ? hudCanvasSize : IsMenuCanvas(c) ? new Vector2(1920f, 1080f) : frontCanvasSize;
 
         c.renderMode = RenderMode.WorldSpace;
         c.worldCamera = head.Cam;
@@ -295,6 +345,9 @@ public class VRHud : MonoBehaviour
         (new Regex(@"Pasa el mouse sobre", RegexOptions.IgnoreCase), "Apunta con el láser a"),
         (new Regex(@"presiona (<b>)?E(</b>)?(?![\w])"), "presiona $1el gatillo$2"),
         (new Regex(@"presiona (<b>)?Enter(</b>)?"), "presiona $1A$2"),
+        (new Regex(@"Tab: siguiente campo(\s*·\s*)Enter: (\w+)"), "Gatillo: elegir campo$1A: $2"),
+        (new Regex(@"Esc: regresar"), "B: regresar"),
+        (new Regex(@"Arrastra con el mouse para girarlo", RegexOptions.IgnoreCase), "Apunta, mantén el gatillo y mueve el láser para girarlo"),
         (new Regex(@"\bclic derecho\b", RegexOptions.IgnoreCase), "grip"),
         (new Regex(@"\bel mouse\b", RegexOptions.IgnoreCase), "la mano"),
     };

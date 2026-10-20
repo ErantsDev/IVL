@@ -20,9 +20,22 @@ public class VRLaser : MonoBehaviour
 
     LineRenderer line;
     Transform dot;
-    Material dotMat;
-    GameObject uiTarget, hoverTarget;
+    Renderer dotRenderer;
+    Material lineMat, dotMat;
+    // Sobre los paneles el láser y el punto se dibujan encima (si no, el panel los tapa y no se
+    // sabe a dónde se apunta).
+    Material lineTopMat, dotTopMat;
+    GameObject uiTarget, hoverTarget, lastHover;
+    float lastHoverTime;
     PointerEventData ped;
+    RaycastResult uiHit;
+    Canvas uiCanvas;
+    // Presión en curso (como un clic de mouse: se presiona y se suelta).
+    GameObject pressTarget, pressClick, dragTarget;
+    Canvas pressCanvas;
+    float pressTime;
+    Transform hoverScaled;
+    Vector3 hoverScaleBase;
     readonly List<Canvas> canvasBuffer = new List<Canvas>();
     static readonly RaycastHit[] hits = new RaycastHit[16];
 
@@ -42,6 +55,15 @@ public class VRLaser : MonoBehaviour
     void Awake()
     {
         var mat = new Material(Shader.Find("Sprites/Default"));
+        lineMat = mat;
+        var ui = Shader.Find("UI/Default");
+        if (ui != null)
+        {
+            lineTopMat = VROnTop.Copy(new Material(ui));
+            lineTopMat.renderQueue = 4010;
+            dotTopMat = VROnTop.Copy(new Material(ui));
+            dotTopMat.renderQueue = 4011;
+        }
         line = gameObject.AddComponent<LineRenderer>();
         line.sharedMaterial = mat;
         line.positionCount = 2;
@@ -56,6 +78,7 @@ public class VRLaser : MonoBehaviour
         d.transform.localScale = Vector3.one * 0.012f;
         dotMat = new Material(mat);
         var r = d.GetComponent<Renderer>();
+        dotRenderer = r;
         r.sharedMaterial = dotMat;
         r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         dot = d.transform;
@@ -67,9 +90,17 @@ public class VRLaser : MonoBehaviour
         if (dot != null) Destroy(dot.gameObject);
     }
 
+    /// <summary>Capa del láser y su punto (el menú en VR usa una capa propia).</summary>
+    public void SetLayer(int layer)
+    {
+        gameObject.layer = layer;
+        if (dot != null) dot.gameObject.layer = layer;
+    }
+
     void OnDisable()
     {
         if (dot != null) dot.gameObject.SetActive(false);
+        CancelPress();
         SetHover(null);
         if (Instance == this) Instance = null;
     }
@@ -118,7 +149,12 @@ public class VRLaser : MonoBehaviour
         line.startColor = c;
         line.endColor = new Color(c.r, c.g, c.b, c.a * 0.3f);
         dot.position = end;
-        dotMat.color = active ? activeColor : Color.white;
+        bool onUI = uiDist < float.PositiveInfinity && lineTopMat != null;
+        line.sharedMaterial = onUI ? lineTopMat : lineMat;
+        dotRenderer.sharedMaterial = onUI ? dotTopMat : dotMat;
+        dot.localScale = Vector3.one * (onUI ? 0.016f : 0.012f);
+        dotRenderer.sharedMaterial.color = active ? activeColor : Color.white;
+        if (onUI) line.sharedMaterial.color = Color.white;
     }
 
     // ------------------------------------------------------------------
@@ -129,9 +165,10 @@ public class VRLaser : MonoBehaviour
     float UpdateUI(Ray ray)
     {
         uiTarget = null;
+        uiCanvas = null;
         var hud = VRHud.Instance;
         var head = VRHeadPose.Current;
-        if (hud == null || head == null || EventSystem.current == null) { SetHover(null); return float.PositiveInfinity; }
+        if (hud == null || head == null || EventSystem.current == null) { CancelPress(); SetHover(null); return float.PositiveInfinity; }
 
 
         Canvas best = null;
@@ -148,7 +185,7 @@ public class VRLaser : MonoBehaviour
             if (!rt.rect.Contains(local)) continue;
             best = c; bestD = d; bestP = p;
         }
-        if (best == null) { SetHover(null); return float.PositiveInfinity; }
+        if (best == null) { ReleaseIfUp(); SetHover(null); return float.PositiveInfinity; }
 
         // Elemento de interfaz bajo el láser: el de mayor profundidad de dibujo que lo contenga
         // (lo mismo que hace el GraphicRaycaster, pero sin depender de la cámara de eventos).
@@ -177,23 +214,108 @@ public class VRLaser : MonoBehaviour
         if (ped == null) ped = new PointerEventData(EventSystem.current);
         ped.Reset();
         ped.button = PointerEventData.InputButton.Left;
+        ped.delta = sp - ped.position;
         ped.position = sp;
+        uiCanvas = best;
+        uiHit = new RaycastResult
+        {
+            gameObject = uiTarget,
+            module = best.GetComponent<UnityEngine.UI.GraphicRaycaster>(),
+            distance = bestD,
+            worldPosition = bestP,
+            worldNormal = -best.transform.forward,
+            screenPosition = sp,
+            sortingOrder = best.sortingOrder,
+        };
+        ped.pointerCurrentRaycast = uiHit;
+
+        // Al jalar el gatillo la mano se mueve un poco: si justo se salió del botón, cuenta el
+        // último que estaba apuntado (si fue hace muy poco).
+        GameObject target = uiTarget;
+        if (target != null) { lastHover = target; lastHoverTime = Time.unscaledTime; }
+        else if (lastHover != null && Time.unscaledTime - lastHoverTime < 0.25f) target = lastHover;
+
         SetHover(uiTarget);
+
+        if (VRInput.PrimaryPressed() && target != null) Press(target);
+        else if (pressTarget != null) Hold();
+
         // Zona transparente del panel: el láser sigue de largo hacia la escena.
         if (uiTarget == null) return float.PositiveInfinity;
-
-        if (uiTarget != null && VRInput.PrimaryPressed())
-        {
-            var clickGO = ExecuteEvents.GetEventHandler<IPointerClickHandler>(uiTarget);
-            if (clickGO != null)
-            {
-                ped.pointerPress = clickGO;
-                ExecuteEvents.Execute(clickGO, ped, ExecuteEvents.pointerDownHandler);
-                ExecuteEvents.Execute(clickGO, ped, ExecuteEvents.pointerUpHandler);
-                ExecuteEvents.Execute(clickGO, ped, ExecuteEvents.pointerClickHandler);
-            }
-        }
         return bestD;
+    }
+
+    void Press(GameObject target)
+    {
+        CancelPress();
+        pressTarget = target;
+        pressCanvas = uiCanvas;
+        pressTime = Time.unscaledTime;
+        ped.eligibleForClick = true;
+        ped.delta = Vector2.zero;
+        ped.dragging = false;
+        ped.useDragThreshold = true;
+        ped.pressPosition = ped.position;
+        ped.pointerPressRaycast = uiHit;
+        ped.rawPointerPress = target;
+
+        var down = ExecuteEvents.ExecuteHierarchy(target, ped, ExecuteEvents.pointerDownHandler);
+        pressClick = ExecuteEvents.GetEventHandler<IPointerClickHandler>(target);
+        ped.pointerPress = down != null ? down : pressClick;
+
+        dragTarget = ExecuteEvents.GetEventHandler<IDragHandler>(target);
+        ped.pointerDrag = dragTarget;
+        if (dragTarget != null)
+        {
+            ExecuteEvents.Execute(dragTarget, ped, ExecuteEvents.initializePotentialDrag);
+            ExecuteEvents.Execute(dragTarget, ped, ExecuteEvents.beginDragHandler);
+            ped.dragging = true;
+        }
+    }
+
+    void Hold()
+    {
+        if (!VRInput.PrimaryHeld()) { Release(); return; }
+        if (dragTarget != null && ped.dragging) ExecuteEvents.Execute(dragTarget, ped, ExecuteEvents.dragHandler);
+    }
+
+    void ReleaseIfUp()
+    {
+        if (pressTarget != null && !VRInput.PrimaryHeld()) Release();
+    }
+
+    void Release()
+    {
+        if (pressTarget == null) return;
+        GameObject overClick = uiTarget != null ? ExecuteEvents.GetEventHandler<IPointerClickHandler>(uiTarget) : null;
+        if (ped.pointerPress != null) ExecuteEvents.Execute(ped.pointerPress, ped, ExecuteEvents.pointerUpHandler);
+        // Clic si se suelta sobre el mismo botón o si fue un toque rápido (la mano tiembla un poco).
+        bool quick = Time.unscaledTime - pressTime < 0.6f;
+        if (pressClick != null && (overClick == pressClick || (quick && !(ped.dragging && dragTarget == pressClick))))
+            ExecuteEvents.Execute(pressClick, ped, ExecuteEvents.pointerClickHandler);
+        if (dragTarget != null && ped.dragging) ExecuteEvents.Execute(dragTarget, ped, ExecuteEvents.endDragHandler);
+
+        // Que el botón no se quede "seleccionado" (con otro color); los campos de texto sí.
+        var es = EventSystem.current;
+        if (es != null && es.currentSelectedGameObject != null && es.currentSelectedGameObject.GetComponent<TMPro.TMP_InputField>() == null)
+            es.SetSelectedGameObject(null);
+
+        pressTarget = pressClick = dragTarget = null;
+        ped.pointerPress = ped.rawPointerPress = ped.pointerDrag = null;
+        ped.dragging = false;
+    }
+
+    void CancelPress()
+    {
+        if (pressTarget == null) return;
+        if (ped != null)
+        {
+            if (ped.pointerPress != null) ExecuteEvents.Execute(ped.pointerPress, ped, ExecuteEvents.pointerUpHandler);
+            if (dragTarget != null && ped.dragging) ExecuteEvents.Execute(dragTarget, ped, ExecuteEvents.endDragHandler);
+            ped.pointerPress = ped.rawPointerPress = ped.pointerDrag = null;
+            ped.dragging = false;
+        }
+        pressTarget = pressClick = dragTarget = null;
     }
 
     void SetHover(GameObject go)
@@ -202,6 +324,18 @@ public class VRLaser : MonoBehaviour
         if (ped == null && EventSystem.current != null) ped = new PointerEventData(EventSystem.current);
         if (hoverTarget != null && ped != null) ExecuteEvents.ExecuteHierarchy(hoverTarget, ped, ExecuteEvents.pointerExitHandler);
         hoverTarget = go;
+        if (ped != null) ped.pointerEnter = hoverTarget;
         if (hoverTarget != null && ped != null) ExecuteEvents.ExecuteHierarchy(hoverTarget, ped, ExecuteEvents.pointerEnterHandler);
+
+        // El botón apuntado crece un poco: se nota claramente cuál se va a presionar.
+        if (hoverScaled != null) hoverScaled.localScale = hoverScaleBase;
+        hoverScaled = null;
+        var sel = hoverTarget != null ? hoverTarget.GetComponentInParent<UnityEngine.UI.Selectable>() : null;
+        if (sel != null && sel.interactable && sel is UnityEngine.UI.Button)
+        {
+            hoverScaled = sel.transform;
+            hoverScaleBase = hoverScaled.localScale;
+            hoverScaled.localScale = hoverScaleBase * 1.06f;
+        }
     }
 }

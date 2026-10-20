@@ -137,7 +137,12 @@ public static class VRInput
     public static bool InteractPressed() => PrimaryPressed();
     public static bool AltInteractPressed() { Sample(); return rNow.primary && !rPrev.primary; }
     /// <summary>Desactivado hasta que el menú de pausa se vea en VR (si no, el usuario quedaría atorado).</summary>
-    public static bool PausePressed() => false;
+    /// <summary>En el menú principal B regresa (como Esc en PC); en el juego no hay pausa con botón.</summary>
+    public static bool PausePressed()
+    {
+        var flow = GameFlow.Instance;
+        return flow != null && flow.CurrentState == GameFlow.State.Menu && CancelPressed();
+    }
     public static bool ConfirmPressed() => AltInteractPressed();
     public static bool CancelPressed() { Sample(); return rNow.secondary && !rPrev.secondary; }
 

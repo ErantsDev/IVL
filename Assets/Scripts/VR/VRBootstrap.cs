@@ -71,6 +71,7 @@ public class VRBootstrap : MonoBehaviour
             var orbit = flow.menuCamera.GetComponent<MenuCameraOrbit>();
             if (orbit != null) orbit.enabled = false;
             AttachHead(flow.menuCamera.transform, true); // con controles y láser para usar el menú
+            VRLobby.Setup(flow); // el menú como un lobby: panel nítido sobre un fondo liso
         }
 
         foreach (var pc in FindObjectsByType<PlayerController>(FindObjectsInactive.Include))
