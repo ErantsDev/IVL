@@ -348,7 +348,8 @@ public class AvatarAnimatorDriver : MonoBehaviour
         // Manos a los controles.
         var r = VRControllerPose.Right;
         var l = VRControllerPose.Left;
-        rightHandW = Mathf.MoveTowards(rightHandW, r != null ? 1f : 0f, dt * 4f);
+        // Al saludar (espejo) la mano derecha se suelta del control para que se vea la animación.
+        rightHandW = Mathf.MoveTowards(rightHandW, r != null && !IsWaving ? 1f : 0f, dt * 4f);
         leftHandW = Mathf.MoveTowards(leftHandW, l != null ? 1f : 0f, dt * 4f);
         VRHand(AvatarIKGoal.RightHand, AvatarIKHint.RightElbow, rightHandW, r != null ? r.transform : null, 1f);
         VRHand(AvatarIKGoal.LeftHand, AvatarIKHint.LeftElbow, leftHandW, l != null ? l.transform : null, -1f);

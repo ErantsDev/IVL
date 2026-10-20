@@ -48,6 +48,51 @@ public class PlayerController : MonoBehaviour
 
     void OnEnable() => LockCursor(true);
 
+    void Start() => ResolveSpawnOverlap();
+
+    static readonly Collider[] overlapBuffer = new Collider[16];
+
+    /// <summary>
+    /// Si el cuerpo del jugador aparece encimado con un mueble (p. ej. la mesa), el CharacterController
+    /// "sube" encima de él. Aquí se busca el lugar libre más cercano, sobre el piso, y se mueve ahí.
+    /// Si no hay choque, no cambia nada.
+    /// </summary>
+    void ResolveSpawnOverlap()
+    {
+        if (controller == null) return;
+        if (!Overlaps(transform.position)) return;
+        for (float r = 0.25f; r <= 2.0f; r += 0.25f)
+        {
+            for (int i = 0; i < 16; i++)
+            {
+                float a = i * Mathf.PI * 2f / 16f;
+                Vector3 p = transform.position + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * r;
+                if (Overlaps(p)) continue;
+                if (!Physics.Raycast(p + Vector3.up * 0.5f, Vector3.down, 1.0f, ~0, QueryTriggerInteraction.Ignore)) continue; // que haya piso
+                controller.enabled = false;
+                transform.position = p;
+                controller.enabled = true;
+                return;
+            }
+        }
+    }
+
+    bool Overlaps(Vector3 pos)
+    {
+        float radius = controller.radius + 0.02f;
+        Vector3 c = pos + transform.rotation * controller.center;
+        float half = Mathf.Max(0f, controller.height * 0.5f - radius);
+        Vector3 a = c + Vector3.up * half, b = c - Vector3.up * half + Vector3.up * (controller.stepOffset + 0.02f);
+        int n = Physics.OverlapCapsuleNonAlloc(a, b, radius, overlapBuffer, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < n; i++)
+        {
+            var col = overlapBuffer[i];
+            if (col == null || col.transform.IsChildOf(transform)) continue; // el propio jugador y su avatar
+            return true;
+        }
+        return false;
+    }
+
     void Update()
     {
         // Con GameFlow en la escena, el cursor lo controla GameFlow (menú, pausa, resultados).

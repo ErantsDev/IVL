@@ -82,6 +82,7 @@ public class VRScreen : MonoBehaviour
             SetLayer(uiPanel, ScreenUILayer);
             uiPanel.GetComponentsInChildren(true, s.texts);
             VROnTop.Apply(uiPanel); // que el lomo no tape las instrucciones
+            VRHud.SolidBackgrounds(uiPanel);
         }
 
         s.PointerPixel = work.HasValue ? (Vector2)cam.WorldToScreenPoint(work.Value) : new Vector2(cam.pixelWidth * 0.5f, cam.pixelHeight * 0.5f);

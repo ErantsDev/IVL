@@ -41,7 +41,6 @@ public class VRLaser : MonoBehaviour
 
     void Awake()
     {
-        Instance = this;
         var mat = new Material(Shader.Find("Sprites/Default"));
         line = gameObject.AddComponent<LineRenderer>();
         line.sharedMaterial = mat;
@@ -72,10 +71,12 @@ public class VRLaser : MonoBehaviour
     {
         if (dot != null) dot.gameObject.SetActive(false);
         SetHover(null);
+        if (Instance == this) Instance = null;
     }
 
     void OnEnable()
     {
+        Instance = this;
         if (dot != null) dot.gameObject.SetActive(true);
     }
 

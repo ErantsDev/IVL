@@ -25,7 +25,7 @@ public class VRHud : MonoBehaviour
     [Tooltip("Distancia de los paneles a los ojos (m).")]
     public float distance = 1.2f;
     [Tooltip("Ancho del HUD del nivel (m).")]
-    public float hudWidth = 0.95f;
+    public float hudWidth = 1.1f;
     [Tooltip("Tamaño del lienzo del HUD en VR (px): compacto para que nada se separe ni se encime.")]
     public Vector2 hudCanvasSize = new Vector2(1120f, 760f);
     [Header("Paneles de minijuegos y menús")]
@@ -60,6 +60,12 @@ public class VRHud : MonoBehaviour
     [Header("Aviso de acción")]
     public float promptDistance = 1.0f;
 
+    [Header("Mensajes (toast)")]
+    [Tooltip("Tamaño de letra de los mensajes que salen al realizar acciones.")]
+    public float toastFontSize = 34f;
+    [Tooltip("Grados arriba del centro de la vista: así no se enciman con el aviso de acción (abajo).")]
+    public float toastUp = 9f;
+
     public static VRHud Instance { get; private set; }
 
     /// <summary>Canvas convertidos (el láser los usa para apuntar a botones).</summary>
@@ -84,6 +90,7 @@ public class VRHud : MonoBehaviour
     {
         Instance = this;
         BuildPrompt();
+        BuildToast();
     }
 
     void OnDestroy()
@@ -148,6 +155,7 @@ public class VRHud : MonoBehaviour
 
         TranslateTexts();
         UpdatePrompt(head);
+        UpdateToast(head);
     }
 
     /// <summary>Partes del HUD que oculta el botón X (información de consulta, no avisos).</summary>
@@ -205,8 +213,46 @@ public class VRHud : MonoBehaviour
         {
             if (c == null) continue;
             VROnTop.Apply(c.transform);
+            SolidBackgrounds(c.transform);
             c.GetComponentsInChildren(true, tmpBuffer);
             texts.AddRange(tmpBuffer);
+            // Mensajes de acción del nivel: se muestran en un panel propio, grande y con fondo.
+            foreach (var t in tmpBuffer)
+                if (t != null && t.name == "ToastText" && !sources.Contains(t))
+                {
+                    sources.Add(t);
+                    t.transform.localScale = Vector3.zero; // el original no se ve en VR
+                }
+        }
+        sources.RemoveAll(t => t == null);
+    }
+
+    // ------------------------------------------------------------------
+    //  Fondos más opacos
+    // ------------------------------------------------------------------
+
+    public const float SolidAlpha = 0.92f;
+    static readonly HashSet<Image> solidDone = new HashSet<Image>();
+    static readonly List<Image> imgBuffer = new List<Image>();
+
+    /// <summary>
+    /// Los fondos oscuros semitransparentes se hacen casi opacos: en las gafas, con el laboratorio
+    /// blanco detrás, el texto blanco no se distinguía.
+    /// </summary>
+    public static void SolidBackgrounds(Transform root)
+    {
+        root.GetComponentsInChildren(true, imgBuffer);
+        foreach (var img in imgBuffer)
+        {
+            if (img == null || solidDone.Contains(img)) continue;
+            solidDone.Add(img);
+            var col = img.color;
+            float bright = Mathf.Max(col.r, Mathf.Max(col.g, col.b));
+            if (bright < 0.35f && col.a >= 0.15f && col.a < SolidAlpha)
+            {
+                col.a = SolidAlpha;
+                img.color = col;
+            }
         }
     }
 
@@ -294,7 +340,7 @@ public class VRHud : MonoBehaviour
         bgGO.transform.SetParent(go.transform, false);
         promptBgRT = (RectTransform)bgGO.transform;
         promptBg = bgGO.AddComponent<Image>();
-        promptBg.color = new Color(0f, 0f, 0f, 0.6f);
+        promptBg.color = new Color(0f, 0f, 0f, 0.85f);
         promptBg.raycastTarget = false;
 
         var textGO = new GameObject("Texto", typeof(RectTransform));
@@ -329,6 +375,91 @@ public class VRHud : MonoBehaviour
         if (promptText.text != p) promptText.text = p;
         Vector2 pref = promptText.GetPreferredValues(p, 1300f, 0f);
         promptBgRT.sizeDelta = new Vector2(Mathf.Min(pref.x, 1300f) + 32f, pref.y + 16f);
+    }
+
+    // ------------------------------------------------------------------
+    //  Mensajes al realizar acciones (ToastText de cada nivel)
+    // ------------------------------------------------------------------
+
+    readonly List<TMP_Text> sources = new List<TMP_Text>();
+    Canvas toastCanvas;
+    CanvasGroup toastGroup;
+    RectTransform toastBgRT;
+    TextMeshProUGUI toastText;
+
+    void BuildToast()
+    {
+        var go = new GameObject("VRMensaje", typeof(RectTransform));
+        go.layer = UILayer;
+        go.transform.SetParent(transform, false);
+        toastCanvas = go.AddComponent<Canvas>();
+        toastCanvas.renderMode = RenderMode.WorldSpace;
+        toastCanvas.sortingOrder = 210;
+        toastGroup = go.AddComponent<CanvasGroup>();
+        toastGroup.blocksRaycasts = false;
+        toastGroup.interactable = false;
+        var rt = (RectTransform)go.transform;
+        rt.sizeDelta = new Vector2(1400f, 500f);
+        rt.localScale = Vector3.one * (promptDistance * 0.0012f);
+
+        var bgGO = new GameObject("Fondo", typeof(RectTransform));
+        bgGO.layer = UILayer;
+        bgGO.transform.SetParent(go.transform, false);
+        toastBgRT = (RectTransform)bgGO.transform;
+        var bg = bgGO.AddComponent<Image>();
+        bg.color = new Color(0.05f, 0.07f, 0.1f, SolidAlpha);
+        bg.raycastTarget = false;
+        var outline = bgGO.AddComponent<Outline>();
+        outline.effectColor = new Color(1f, 1f, 1f, 0.5f);
+        outline.effectDistance = new Vector2(3f, -3f);
+
+        var textGO = new GameObject("Texto", typeof(RectTransform));
+        textGO.layer = UILayer;
+        textGO.transform.SetParent(toastBgRT, false);
+        var trt = (RectTransform)textGO.transform;
+        trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
+        trt.offsetMin = new Vector2(24f, 12f); trt.offsetMax = new Vector2(-24f, -12f);
+        toastText = textGO.AddComponent<TextMeshProUGUI>();
+        toastText.fontSize = toastFontSize;
+        toastText.alignment = TextAlignmentOptions.Center;
+        toastText.richText = true;
+        toastText.color = Color.white;
+        toastText.raycastTarget = false;
+        VROnTop.Apply(go.transform);
+        toastCanvas.enabled = false;
+    }
+
+    void UpdateToast(VRHeadPose head)
+    {
+        // El mensaje visible más reciente (el nivel lo muestra subiendo el alpha de su CanvasGroup).
+        TMP_Text src = null;
+        float alpha = 0f;
+        foreach (var t in sources)
+        {
+            if (t == null || !t.gameObject.activeInHierarchy || string.IsNullOrEmpty(t.text)) continue;
+            var g = t.GetComponentInParent<CanvasGroup>();
+            float a = g != null ? g.alpha : 1f;
+            if (a > alpha) { alpha = a; src = t; }
+        }
+        bool show = src != null && alpha > 0.02f;
+        toastCanvas.enabled = show;
+        if (!show) return;
+
+        // Arriba del centro de la vista, siempre de frente: no se encima con el aviso de acción.
+        Transform h = head.transform;
+        Quaternion rot = h.rotation * Quaternion.Euler(-toastUp, 0f, 0f);
+        toastCanvas.transform.SetPositionAndRotation(h.position + rot * Vector3.forward * (promptDistance - 0.02f), rot);
+        toastCanvas.worldCamera = head.Cam;
+        toastGroup.alpha = alpha;
+
+        string msg = Translate(src.text);
+        if (toastText.text != msg)
+        {
+            toastText.text = msg;
+            toastText.fontSize = toastFontSize;
+            Vector2 pref = toastText.GetPreferredValues(msg, 1250f, 0f);
+            toastBgRT.sizeDelta = new Vector2(Mathf.Min(pref.x, 1250f) + 48f, pref.y + 24f);
+        }
     }
 
     /// <summary>Cambia los nombres de teclas de los avisos de PC por los botones del control.</summary>

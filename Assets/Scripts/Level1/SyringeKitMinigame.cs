@@ -191,7 +191,8 @@ public class SyringeKitMinigame : MonoBehaviour
     Vector3 NeedleTarget()
     {
         // La parte trasera del cono de la aguja cubre la punta Luer de la jeringa.
-        return pickedSyringe.root.TransformPoint(pickedSyringe.tipLocal) + new Vector3(0f, 0f, 0.0075f);
+        // En el espacio de la charola (con gafas la charola está girada hacia el usuario; en PC no gira).
+        return pickedSyringe.root.TransformPoint(pickedSyringe.tipLocal) + stage.TransformDirection(new Vector3(0f, 0f, 0.0075f));
     }
 
     void Pick(Item it)

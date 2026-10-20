@@ -12,8 +12,8 @@ using UnityEngine.SceneManagement;
 ///  - Se apaga el recorrido automático de la cámara del menú (mover la vista sin que el usuario
 ///    se mueva marea en VR).
 ///  - Jugador: giro por pasos (VRSnapTurn). Escena: paneles flotantes y mira (VRHud).
-///  - PROVISIONAL: como los menús todavía no se pueden usar en VR (falta el láser), se entra directo
-///    al nivel en el modo de <see cref="GameSession.Mode"/> (educativo por defecto).
+///  - El juego empieza en el menú principal; se usa con el láser del control derecho.
+///    (autoStart = true entra directo al nivel, sólo para pruebas.)
 /// </summary>
 [DefaultExecutionOrder(-1000)] // lee los controles antes que cualquier otro script
 public class VRBootstrap : MonoBehaviour
@@ -23,8 +23,8 @@ public class VRBootstrap : MonoBehaviour
     [Tooltip("Radio del cuerpo del jugador con gafas (m). En PC es 0.3.")]
     public float vrBodyRadius = 0.2f;
 
-    [Tooltip("Entrar directo al nivel al estar en el menú (mientras no haya menús en VR).")]
-    public bool autoStart = true;
+    [Tooltip("Entrar directo al nivel al estar en el menú (sólo para pruebas; el menú ya se usa con el láser).")]
+    public bool autoStart = false;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Init()
@@ -70,7 +70,7 @@ public class VRBootstrap : MonoBehaviour
         {
             var orbit = flow.menuCamera.GetComponent<MenuCameraOrbit>();
             if (orbit != null) orbit.enabled = false;
-            AttachHead(flow.menuCamera.transform, false);
+            AttachHead(flow.menuCamera.transform, true); // con controles y láser para usar el menú
         }
 
         foreach (var pc in FindObjectsByType<PlayerController>(FindObjectsInactive.Include))
@@ -107,12 +107,15 @@ public class VRBootstrap : MonoBehaviour
         var head = cam.gameObject.AddComponent<VRHeadPose>();
 
         // Los controles, en el mismo espacio que la cabeza: se ven y se mueven con las manos.
-        // Sólo en el jugador: la cámara del menú se apaga al jugar, pero su soporte no, y sus
-        // controles quedaban flotando donde estaba esa cámara (el "duplicado").
         if (withControllers)
         {
-            VRControllerPose.Create(offset, UnityEngine.XR.XRNode.LeftHand, head);
-            VRControllerPose.Create(offset, UnityEngine.XR.XRNode.RightHand, head);
+            var l = VRControllerPose.Create(offset, UnityEngine.XR.XRNode.LeftHand, head);
+            var r = VRControllerPose.Create(offset, UnityEngine.XR.XRNode.RightHand, head);
+            // Los controles sólo se ven mientras esa cámara está en uso: la del menú se apaga al
+            // jugar pero su soporte no, y sus controles quedaban flotando (el "duplicado").
+            var rig = offset.gameObject.AddComponent<VRRigVisibility>();
+            rig.cameraObject = cam.gameObject;
+            rig.controllers = new[] { l.gameObject, r.gameObject };
         }
 
         // La interfaz del minijuego de pantalla completa vive en su propia capa: los ojos no la dibujan.
