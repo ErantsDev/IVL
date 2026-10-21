@@ -16,6 +16,8 @@ public class VRLaser : MonoBehaviour
 
     public static VRLaser Instance { get; private set; }
     /// <summary>true si el láser está sobre un elemento de interfaz (botón, texto...).</summary>
+    /// <summary>Elemento de interfaz bajo el láser (o null).</summary>
+    public GameObject UITarget => uiTarget;
     public static bool OverUI => (Instance != null && Instance.uiTarget != null) || (VRScreen.Current != null && VRScreen.Current.OverUI);
 
     LineRenderer line;
@@ -37,6 +39,7 @@ public class VRLaser : MonoBehaviour
     Transform hoverScaled;
     Vector3 hoverScaleBase;
     readonly List<Canvas> canvasBuffer = new List<Canvas>();
+    readonly List<(Canvas c, float d, Vector3 p)> candidates = new List<(Canvas, float, Vector3)>();
     static readonly RaycastHit[] hits = new RaycastHit[16];
 
     /// <summary>Rayo del control derecho, si existe.</summary>
@@ -171,46 +174,34 @@ public class VRLaser : MonoBehaviour
         if (hud == null || head == null || EventSystem.current == null) { CancelPress(); SetHover(null); return float.PositiveInfinity; }
 
 
-        Canvas best = null;
-        float bestD = maxLength * 2f;
-        Vector3 bestP = default;
+        // Paneles que cruza el rayo, del más cercano al más lejano: si en uno no hay nada bajo el
+        // láser (zona transparente) se sigue al de atrás.
+        candidates.Clear();
         foreach (var c in hud.Panels)
         {
             if (c == null || !c.isActiveAndEnabled) continue;
             var rt = (RectTransform)c.transform;
             var plane = new Plane(rt.forward, rt.position);
-            if (!plane.Raycast(ray, out float d) || d > bestD) continue;
+            if (!plane.Raycast(ray, out float d) || d > maxLength * 2f) continue;
             Vector3 p = ray.GetPoint(d);
             Vector2 local = rt.InverseTransformPoint(p);
             if (!rt.rect.Contains(local)) continue;
-            best = c; bestD = d; bestP = p;
+            candidates.Add((c, d, p));
+        }
+        candidates.Sort((a, b) => a.d.CompareTo(b.d));
+
+        var cam = head.Cam;
+        Canvas best = null;
+        float bestD = float.PositiveInfinity;
+        Vector3 bestP = default;
+        Vector2 sp = default;
+        foreach (var (c, d, p) in candidates)
+        {
+            var hitGO = HitTest(c, p, cam, out sp);
+            if (hitGO != null || hud.IsSolid(c)) { uiTarget = hitGO; best = c; bestD = d; bestP = p; break; }
         }
         if (best == null) { ReleaseIfUp(); SetHover(null); return float.PositiveInfinity; }
-
-        // Elemento de interfaz bajo el láser: el de mayor profundidad de dibujo que lo contenga
-        // (lo mismo que hace el GraphicRaycaster, pero sin depender de la cámara de eventos).
-        var cam = head.Cam;
-        Vector2 sp = cam.WorldToScreenPoint(bestP);
-        long bestKey = long.MinValue;
-        best.GetComponentsInChildren(false, canvasBuffer); // incluye Canvas anidados
-        foreach (var sub in canvasBuffer)
-        {
-            var graphics = UnityEngine.UI.GraphicRegistry.GetRaycastableGraphicsForCanvas(sub);
-            for (int i = 0; i < graphics.Count; i++)
-            {
-                var g = graphics[i];
-                if (g == null || !g.raycastTarget || !g.isActiveAndEnabled || g.depth < 0 || g.canvasRenderer.cull) continue;
-                // Lo invisible (p. ej. un aviso con alfa 0) no debe atrapar el láser.
-                if (g.canvasRenderer.GetInheritedAlpha() < 0.02f) continue;
-                long key = ((long)sub.sortingOrder << 32) + g.depth;
-                if (key <= bestKey) continue;
-                var grt = g.rectTransform;
-                if (!grt.rect.Contains((Vector2)grt.InverseTransformPoint(bestP))) continue;
-                if (!g.Raycast(sp, cam)) continue; // respeta CanvasGroup (blocksRaycasts) y máscaras
-                bestKey = key;
-                uiTarget = g.gameObject;
-            }
-        }
+        bool solid = hud.IsSolid(best);
         if (ped == null) ped = new PointerEventData(EventSystem.current);
         ped.Reset();
         ped.button = PointerEventData.InputButton.Left;
@@ -240,9 +231,41 @@ public class VRLaser : MonoBehaviour
         if (VRInput.PrimaryPressed() && target != null) Press(target);
         else if (pressTarget != null) Hold();
 
-        // Zona transparente del panel: el láser sigue de largo hacia la escena.
-        if (uiTarget == null) return float.PositiveInfinity;
+        // Zona transparente del panel: el láser sigue de largo hacia la escena (salvo la pantalla del minijuego).
+        if (uiTarget == null && !solid) return float.PositiveInfinity;
         return bestD;
+    }
+
+    /// <summary>
+    /// Elemento de interfaz del panel <paramref name="c"/> en el punto <paramref name="p"/>: el de mayor
+    /// profundidad de dibujo que lo contenga (lo mismo que hace el GraphicRaycaster, sin depender de
+    /// la cámara de eventos).
+    /// </summary>
+    GameObject HitTest(Canvas c, Vector3 p, Camera cam, out Vector2 sp)
+    {
+        sp = cam.WorldToScreenPoint(p);
+        GameObject found = null;
+        long bestKey = long.MinValue;
+        c.GetComponentsInChildren(false, canvasBuffer); // incluye Canvas anidados
+        foreach (var sub in canvasBuffer)
+        {
+            var graphics = UnityEngine.UI.GraphicRegistry.GetRaycastableGraphicsForCanvas(sub);
+            for (int i = 0; i < graphics.Count; i++)
+            {
+                var g = graphics[i];
+                if (g == null || !g.raycastTarget || !g.isActiveAndEnabled || g.depth < 0 || g.canvasRenderer.cull) continue;
+                // Lo invisible (p. ej. un aviso con alfa 0) no debe atrapar el láser.
+                if (g.canvasRenderer.GetInheritedAlpha() < 0.02f) continue;
+                long key = ((long)sub.sortingOrder << 32) + g.depth;
+                if (key <= bestKey) continue;
+                var grt = g.rectTransform;
+                if (!grt.rect.Contains((Vector2)grt.InverseTransformPoint(p))) continue;
+                if (!g.Raycast(sp, cam)) continue; // respeta CanvasGroup (blocksRaycasts) y máscaras
+                bestKey = key;
+                found = g.gameObject;
+            }
+        }
+        return found;
     }
 
     void Press(GameObject target)

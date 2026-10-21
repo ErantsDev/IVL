@@ -151,7 +151,8 @@ public class DorsalMinigame : MonoBehaviour
         minigameCamera.transform.SetPositionAndRotation(center + Vector3.up * cameraHeight, Quaternion.LookRotation(Vector3.down, fwd));
         minigameCamera.gameObject.SetActive(true);
         playerCam = ObjectGrabber.Instance != null ? ObjectGrabber.Instance.Cam : null;
-        if (playerCam != null) playerCam.enabled = false;
+        // Con gafas la vista del jugador sigue encendida: la del minijuego se ve en una pantalla.
+        if (playerCam != null && !VRMode.Active) playerCam.enabled = false;
         // Con gafas la vista cenital ocupa la vista como en PC; el control derecho mueve el puntero.
         if (VRMode.Active) VRScreen.Show(minigameCamera, panel != null ? (RectTransform)panel.transform : null, PatchCenterWorld());
 
@@ -792,6 +793,28 @@ public class DorsalMinigame : MonoBehaviour
         Vector3 b = minigameCamera.WorldToScreenPoint(c + minigameCamera.transform.right * 0.01f);
         float pxPerCm = Vector2.Distance(a, b);
 
+        // VR: el puntero está en pixeles de la cámara del minijuego, que se ve en una pantalla.
+        var scr = VRMode.Active ? VRScreen.Current : null;
+        if (scr != null)
+        {
+            if (brushCursor != null)
+            {
+                brushCursor.gameObject.SetActive(scr.HasPointer && !scr.OverUI);
+                float bcm = kind == Kind.Shave ? shaveBrushCm : gauzeBrushCm;
+                float dv = 2f * bcm * pxPerCm * scr.PixelToCanvas;
+                brushCursor.sizeDelta = new Vector2(dv, dv);
+                brushCursor.position = scr.PixelToWorld(mouse);
+                var gi = brushCursor.GetComponent<Graphic>();
+                if (gi != null) gi.color = onPatch ? new Color(1f, 1f, 1f, 0.95f) : new Color(1f, 1f, 1f, 0.35f);
+            }
+            if (scaleBar != null)
+            {
+                scaleBar.sizeDelta = new Vector2(pxPerCm * scr.PixelToCanvas, scaleBar.sizeDelta.y);
+                if (scaleBarLabel != null) scaleBarLabel.text = "1 cm";
+            }
+            return;
+        }
+
         if (brushCursor != null)
         {
             brushCursor.gameObject.SetActive(!PointerOverUI());
@@ -811,7 +834,7 @@ public class DorsalMinigame : MonoBehaviour
         }
     }
 
-    static bool PointerOverUI() => VRMode.Active ? VRLaser.OverUI : EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+    static bool PointerOverUI() => VRMode.Active ? (VRScreen.Current != null ? VRScreen.Current.OverUI : VRLaser.OverUI) : EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
 
     static Vector2 MousePosition() => GameInput.PointerPosition();
 

@@ -1,214 +1,207 @@
 using System.Collections.Generic;
-using TMPro;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>
-/// Minijuegos con cámara propia en VR (rasurado y desinfección, vista cenital del lomo): igual que
-/// en PC, la cámara del minijuego ocupa toda la vista. La rasuradora / gasa sigue a la mano
-/// derecha como si estuviera sobre el lomo: mover la mano 1 cm la mueve ~1 cm sobre el conejo
-/// (en la dirección que se ve en la imagen). Mantener el grip "suelta" la mano para reacomodarla
-/// sin mover la rasuradora. El gatillo rasura / hace clic. La interfaz del minijuego se pasa a un
-/// lienzo de esa cámara para que se vea en las gafas.
+/// Minijuegos con cámara propia en VR (rasurado y desinfección, vista cenital del lomo).
+/// La vista del minijuego se muestra como una pantalla grande frente al usuario, en un espacio
+/// aparte (fondo liso, como el lobby del menú): la cámara del minijuego dibuja en una textura y
+/// esa textura se ve en un panel con la interfaz del minijuego encima, a distancia cómoda.
+/// Se usa como en PC con el mouse: el láser apunta sobre la pantalla y el gatillo rasura / hace
+/// clic. (Antes la cámara del minijuego ocupaba los ojos y su interfaz quedaba pegada a la cara:
+/// se veía doble y no se podía rasurar.)
 /// </summary>
 [DefaultExecutionOrder(-100)] // el puntero se actualiza antes que el minijuego lo lea
 public class VRScreen : MonoBehaviour
 {
-    /// <summary>Capa propia de la interfaz del minijuego (sólo la ve la cámara del minijuego).</summary>
+    /// <summary>Capa reservada (ya no se usa para la interfaz; se conserva para no dibujarla en los ojos).</summary>
     public const int ScreenUILayer = 30;
 
     public static VRScreen Current { get; private set; }
 
-    [Tooltip("Sin punto de trabajo: pixeles que se mueve el puntero por unidad de giro del control.")]
-    public float pointerGain = 1.6f;
-    [Tooltip("Con punto de trabajo: cuánto se mueve la rasuradora por cada cm de la mano (1 = igual).")]
-    public float handGain = 1.3f;
+    public static float Width = 1.7f;      // m
+    public static float Distance = 1.35f;  // m
+    public static float Drop = 0.12f;      // m abajo de los ojos
+    const int TexW = 1600, TexH = 900;
+    const float CanvasW = 1920f, CanvasH = 1080f;
 
-    bool hasWork, handInit;
-    Vector3 workPoint, handOrigin;
-    Vector2 pointerOrigin;
-
-    /// <summary>¿Hay puntero? Y en qué pixel de la cámara del minijuego está.</summary>
-    public bool HasPointer { get; set; }
-    public Vector2 PointerPixel { get; set; }
-    /// <summary>¿El puntero está sobre un elemento de la interfaz del minijuego (botón, panel)?</summary>
-    public bool OverUI { get; set; }
+    /// <summary>¿El láser está sobre la pantalla? Y en qué pixel de la cámara del minijuego.</summary>
+    public bool HasPointer { get; private set; }
+    public Vector2 PointerPixel { get; private set; }
+    /// <summary>¿El láser está sobre un elemento de la interfaz del minijuego (botón, encabezado)?</summary>
+    public bool OverUI { get; private set; }
+    /// <summary>Pixeles del lienzo por pixel de la cámara del minijuego (para el tamaño del pincel).</summary>
+    public float PixelToCanvas => CanvasW / TexW;
 
     public Camera Cam { get; private set; }
-    public Canvas UICanvas { get; private set; }
+    public Canvas ScreenCanvas { get; private set; }
 
+    RenderTexture rt;
     RectTransform ui;
     Transform uiParent;
-    int uiSibling, uiLayer;
-    int camMask;
-    GameObject hover;
-    PointerEventData ped;
-    readonly List<TMP_Text> texts = new List<TMP_Text>();
-    readonly Dictionary<TMP_Text, string> translated = new Dictionary<TMP_Text, string>();
-    readonly List<Canvas> canvasBuffer = new List<Canvas>();
+    int uiSibling;
+    RenderTexture camTarget;
+    StereoTargetEyeMask camEye;
+    // Vista del jugador mientras dura el minijuego: sólo la interfaz y los controles.
+    Camera eye;
+    CameraClearFlags eyeClear;
+    Color eyeBg;
+    int eyeMask;
+    readonly List<(GameObject go, int layer)> movedLayers = new List<(GameObject, int)>();
+    readonly List<Graphic> noRaycast = new List<Graphic>();
+    VRLaser laser;
+    int laserLayer;
 
-    /// <summary>Muestra la interfaz <paramref name="uiPanel"/> sobre la vista de <paramref name="cam"/> (que ocupa la vista de las gafas).</summary>
+    /// <summary>Muestra la vista de <paramref name="cam"/> en una pantalla frente al usuario con <paramref name="uiPanel"/> encima.</summary>
     public static VRScreen Show(Camera cam, RectTransform uiPanel, Vector3? work = null)
     {
         Hide();
-        if (cam == null) return null;
+        var head = VRHeadPose.Current;
+        if (cam == null || head == null) return null;
 
-        var go = new GameObject("VRMinijuegoPantallaCompleta");
+        var go = new GameObject("VRPantallaMinijuego");
         var s = go.AddComponent<VRScreen>();
         Current = s;
         s.Cam = cam;
-        s.camMask = cam.cullingMask;
-        cam.cullingMask = s.camMask | (1 << ScreenUILayer);
 
-        var cgo = new GameObject("LienzoMinijuegoVR", typeof(RectTransform));
-        cgo.layer = ScreenUILayer;
+        // La cámara del minijuego ya no va a los ojos: dibuja en una textura.
+        s.rt = new RenderTexture(TexW, TexH, 24) { antiAliasing = 2, name = "VRMinijuego" };
+        s.camTarget = cam.targetTexture;
+        s.camEye = cam.stereoTargetEye;
+        cam.stereoTargetEye = StereoTargetEyeMask.None;
+        cam.targetTexture = s.rt;
+        cam.enabled = true;
+
+        // Lienzo en el mundo, fijo frente al usuario.
+        var cgo = new GameObject("PantallaMinijuegoVR", typeof(RectTransform));
+        cgo.layer = VRHud.UILayer;
         cgo.transform.SetParent(go.transform, false);
-        s.UICanvas = cgo.AddComponent<Canvas>();
-        s.UICanvas.renderMode = RenderMode.ScreenSpaceCamera;
-        s.UICanvas.worldCamera = cam;
-        s.UICanvas.planeDistance = Mathf.Max(cam.nearClipPlane + 0.02f, 0.08f);
-        var scaler = cgo.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.matchWidthOrHeight = 0.5f;
+        var canvas = cgo.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.worldCamera = head.Cam;
+        canvas.sortingOrder = -10; // el HUD (calma del conejo), los avisos y mensajes se ven encima
+        cgo.AddComponent<GraphicRaycaster>();
+        s.ScreenCanvas = canvas;
+        var crt = (RectTransform)cgo.transform;
+        crt.sizeDelta = new Vector2(CanvasW, CanvasH);
+        crt.pivot = new Vector2(0.5f, 0.5f);
+        Transform h = head.transform;
+        Vector3 fwd = Vector3.ProjectOnPlane(h.forward, Vector3.up);
+        if (fwd.sqrMagnitude < 1e-4f) fwd = Vector3.ProjectOnPlane(h.up, Vector3.up);
+        var rot = Quaternion.LookRotation(fwd.normalized, Vector3.up);
+        crt.SetPositionAndRotation(h.position + rot * Vector3.forward * Distance + Vector3.down * Drop, rot);
+        crt.localScale = Vector3.one * (Width / CanvasW);
+
+        // Marco y la imagen del minijuego.
+        var frame = new GameObject("Marco", typeof(RectTransform)).AddComponent<Image>();
+        frame.gameObject.layer = VRHud.UILayer;
+        frame.transform.SetParent(cgo.transform, false);
+        frame.rectTransform.anchorMin = Vector2.zero; frame.rectTransform.anchorMax = Vector2.one;
+        frame.rectTransform.offsetMin = new Vector2(-14f, -14f); frame.rectTransform.offsetMax = new Vector2(14f, 14f);
+        frame.color = new Color(0.16f, 0.47f, 0.86f, 1f);
+        frame.raycastTarget = false;
+        var img = new GameObject("Vista", typeof(RectTransform)).AddComponent<RawImage>();
+        img.gameObject.layer = VRHud.UILayer;
+        img.transform.SetParent(cgo.transform, false);
+        img.rectTransform.anchorMin = Vector2.zero; img.rectTransform.anchorMax = Vector2.one;
+        img.rectTransform.offsetMin = img.rectTransform.offsetMax = Vector2.zero;
+        img.texture = s.rt;
+        img.raycastTarget = false;
+
         if (uiPanel != null)
         {
             s.ui = uiPanel;
             s.uiParent = uiPanel.parent;
             s.uiSibling = uiPanel.GetSiblingIndex();
-            s.uiLayer = uiPanel.gameObject.layer;
             uiPanel.SetParent(cgo.transform, false);
-            SetLayer(uiPanel, ScreenUILayer);
-            uiPanel.GetComponentsInChildren(true, s.texts);
-            VROnTop.Apply(uiPanel); // que el lomo no tape las instrucciones
-            VRHud.SolidBackgrounds(uiPanel);
+            // El pincel y la barra de escala siguen al puntero: no deben "tapar" la pantalla.
+            foreach (var g in uiPanel.GetComponentsInChildren<Graphic>(true))
+                if (g.raycastTarget && g.GetComponentInParent<Selectable>(true) == null && g.GetComponent<TMPro.TMP_Text>() == null
+                    && (g.rectTransform.sizeDelta.x < 300f || g.name == "Barra"))
+                { g.raycastTarget = false; s.noRaycast.Add(g); }
         }
+        VROnTop.Apply(cgo.transform);
+        VRHud.SolidBackgrounds(cgo.transform);
+        if (VRHud.Instance != null) VRHud.Instance.AddExternal(canvas);
 
-        s.PointerPixel = work.HasValue ? (Vector2)cam.WorldToScreenPoint(work.Value) : new Vector2(cam.pixelWidth * 0.5f, cam.pixelHeight * 0.5f);
-        s.HasPointer = true;
-        s.hasWork = work.HasValue;
-        if (work.HasValue) s.workPoint = work.Value;
+        // Espacio aparte: la vista del jugador sólo dibuja la interfaz y los controles.
+        s.eye = head.Cam;
+        s.eyeClear = s.eye.clearFlags;
+        s.eyeBg = s.eye.backgroundColor;
+        s.eyeMask = s.eye.cullingMask;
+        s.eye.clearFlags = CameraClearFlags.SolidColor;
+        s.eye.backgroundColor = VRLobby.Background;
+        s.eye.cullingMask = (1 << VRHud.UILayer) | (1 << VRLobby.Layer);
+        foreach (var pose in new[] { VRControllerPose.Left, VRControllerPose.Right })
+        {
+            if (pose == null) continue;
+            foreach (var t in pose.GetComponentsInChildren<Transform>(true))
+            { s.movedLayers.Add((t.gameObject, t.gameObject.layer)); t.gameObject.layer = VRLobby.Layer; }
+        }
+        if (VRLaser.Instance != null) { s.laserLayer = VRLaser.Instance.gameObject.layer; s.laser = VRLaser.Instance; s.laser.SetLayer(VRLobby.Layer); }
+
+        s.PointerPixel = new Vector2(TexW * 0.5f, TexH * 0.5f);
         return s;
     }
 
-    /// <summary>Deja todo como estaba (la interfaz vuelve a su lugar).</summary>
+    /// <summary>Deja todo como estaba (la interfaz vuelve a su lugar y la vista vuelve al laboratorio).</summary>
     public static void Hide()
     {
         var s = Current;
         if (s == null) return;
         Current = null;
-        s.SetHover(null);
+        if (VRHud.Instance != null && s.ScreenCanvas != null) VRHud.Instance.RemoveExternal(s.ScreenCanvas);
+        foreach (var g in s.noRaycast) if (g != null) g.raycastTarget = true;
         if (s.ui != null)
         {
             s.ui.SetParent(s.uiParent, false);
             s.ui.SetSiblingIndex(s.uiSibling);
-            SetLayer(s.ui, s.uiLayer);
         }
-        if (s.Cam != null) s.Cam.cullingMask = s.camMask;
+        if (s.Cam != null)
+        {
+            s.Cam.targetTexture = s.camTarget;
+            s.Cam.stereoTargetEye = s.camEye;
+        }
+        if (s.eye != null)
+        {
+            s.eye.clearFlags = s.eyeClear;
+            s.eye.backgroundColor = s.eyeBg;
+            s.eye.cullingMask = s.eyeMask;
+        }
+        foreach (var (go, layer) in s.movedLayers) if (go != null) go.layer = layer;
+        if (s.laser != null) s.laser.SetLayer(s.laserLayer);
+        if (s.rt != null) { s.rt.Release(); Destroy(s.rt); }
         Destroy(s.gameObject);
     }
 
-    static void SetLayer(Transform t, int layer)
+    /// <summary>Posición en el mundo del pixel <paramref name="px"/> de la cámara del minijuego (sobre la pantalla).</summary>
+    public Vector3 PixelToWorld(Vector2 px)
     {
-        foreach (var c in t.GetComponentsInChildren<Transform>(true)) c.gameObject.layer = layer;
+        var crt = (RectTransform)ScreenCanvas.transform;
+        var local = new Vector2((px.x / TexW - 0.5f) * CanvasW, (px.y / TexH - 0.5f) * CanvasH);
+        return crt.TransformPoint(local);
     }
 
     void Update()
     {
-        if (Cam == null) return;
-
-        Vector2 p = PointerPixel;
-        var hand = VRControllerPose.Right;
-        if (hasWork && hand != null)
-        {
-            // La rasuradora sigue a la mano en escala real sobre el lomo.
-            Vector3 hp = hand.transform.position;
-            if (!handInit || VRInput.SecondaryHeld()) { handOrigin = hp; pointerOrigin = p; handInit = true; } // grip: reacomodar la mano
-            Vector2 a = Cam.WorldToScreenPoint(workPoint);
-            Vector2 b = Cam.WorldToScreenPoint(workPoint + Cam.transform.right * 0.01f);
-            float pxPerMeter = Vector2.Distance(a, b) * 100f;
-            Vector3 d = hp - handOrigin;
-            p = pointerOrigin + new Vector2(Vector3.Dot(d, Cam.transform.right), Vector3.Dot(d, Cam.transform.up)) * (pxPerMeter * handGain);
-        }
-        else
-        {
-            // Sin punto de trabajo: el control derecho como mouse en el aire.
-            p += VRInput.LookDelta() * pointerGain;
-        }
-        Vector2 clamped = new Vector2(Mathf.Clamp(p.x, 0f, Cam.pixelWidth), Mathf.Clamp(p.y, 0f, Cam.pixelHeight));
-        if (clamped != p && hand != null) { handOrigin = hand.transform.position; pointerOrigin = clamped; } // en la orilla no se acumula
-        p = clamped;
-        PointerPixel = p;
-
-        // Elemento de la interfaz bajo el puntero (y clic con el gatillo).
-        GameObject target = null;
-        long bestKey = long.MinValue;
-        UICanvas.GetComponentsInChildren(false, canvasBuffer);
-        foreach (var sub in canvasBuffer)
-        {
-            var graphics = GraphicRegistry.GetRaycastableGraphicsForCanvas(sub);
-            for (int i = 0; i < graphics.Count; i++)
-            {
-                var g = graphics[i];
-                if (g == null || !g.raycastTarget || !g.isActiveAndEnabled || g.depth < 0 || g.canvasRenderer.cull) continue;
-                if (g.canvasRenderer.GetInheritedAlpha() < 0.02f) continue;
-                long key = ((long)sub.sortingOrder << 32) + g.depth;
-                if (key <= bestKey) continue;
-                if (!RectTransformUtility.RectangleContainsScreenPoint(g.rectTransform, p, Cam)) continue;
-                if (!g.Raycast(p, Cam)) continue;
-                bestKey = key;
-                target = g.gameObject;
-            }
-        }
-        OverUI = target != null;
-        SetHover(target);
-        if (target != null && VRInput.PrimaryPressed())
-        {
-            var clickGO = ExecuteEvents.GetEventHandler<IPointerClickHandler>(target);
-            if (clickGO != null && Ped(p) != null)
-            {
-                ped.pointerPress = clickGO;
-                ExecuteEvents.Execute(clickGO, ped, ExecuteEvents.pointerDownHandler);
-                ExecuteEvents.Execute(clickGO, ped, ExecuteEvents.pointerUpHandler);
-                ExecuteEvents.Execute(clickGO, ped, ExecuteEvents.pointerClickHandler);
-            }
-        }
-    }
-
-    PointerEventData Ped(Vector2 pos)
-    {
-        if (ped == null && EventSystem.current != null) ped = new PointerEventData(EventSystem.current);
-        if (ped != null) { ped.Reset(); ped.button = PointerEventData.InputButton.Left; ped.position = pos; }
-        return ped;
-    }
-
-    void SetHover(GameObject go)
-    {
-        if (go == hover) return;
-        var e = Ped(PointerPixel);
-        if (e == null) { hover = go; return; }
-        if (hover != null) ExecuteEvents.ExecuteHierarchy(hover, e, ExecuteEvents.pointerExitHandler);
-        hover = go;
-        if (hover != null) ExecuteEvents.ExecuteHierarchy(hover, e, ExecuteEvents.pointerEnterHandler);
-    }
-
-    void LateUpdate()
-    {
-        // Textos de teclado y mouse -> botones del control.
-        foreach (var t in texts)
-        {
-            if (t == null || !t.isActiveAndEnabled) continue;
-            string cur = t.text;
-            if (translated.TryGetValue(t, out var last) && last == cur) continue;
-            string tr = VRHud.Translate(cur);
-            if (tr != cur) t.text = tr;
-            translated[t] = tr;
-        }
+        if (Cam == null || ScreenCanvas == null) return;
+        HasPointer = false;
+        OverUI = false;
+        if (!VRLaser.TryGetRay(out var ray)) return;
+        var crt = (RectTransform)ScreenCanvas.transform;
+        var plane = new Plane(crt.forward, crt.position);
+        if (!plane.Raycast(ray, out float d)) return;
+        Vector2 local = crt.InverseTransformPoint(ray.GetPoint(d));
+        var r = crt.rect;
+        if (!r.Contains(local)) return;
+        HasPointer = true;
+        PointerPixel = new Vector2((local.x - r.xMin) / r.width * TexW, (local.y - r.yMin) / r.height * TexH);
+        // Sobre un botón o el encabezado: el láser hace clic ahí (VRLaser) y no rasura.
+        OverUI = VRLaser.Instance != null && VRLaser.Instance.UITarget != null;
     }
 
     void OnDestroy()
     {
-        if (Current == this) Current = null;
+        if (Current == this) Hide();
     }
 }

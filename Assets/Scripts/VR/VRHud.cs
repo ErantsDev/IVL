@@ -83,6 +83,26 @@ public class VRHud : MonoBehaviour
 
     readonly List<Canvas> panels = new List<Canvas>();
     readonly HashSet<Canvas> hudPanels = new HashSet<Canvas>();
+    readonly HashSet<Canvas> externals = new HashSet<Canvas>();
+
+    /// <summary>Panel que se acomoda solo (p. ej. la pantalla del minijuego): el láser lo usa, pero VRHud no lo mueve.</summary>
+    public void AddExternal(Canvas c)
+    {
+        if (c == null || externals.Contains(c)) return;
+        externals.Add(c);
+        panels.Add(c);
+        c.GetComponentsInChildren(true, tmpBuffer);
+        texts.AddRange(tmpBuffer);
+    }
+
+    public void RemoveExternal(Canvas c)
+    {
+        externals.Remove(c);
+        panels.Remove(c);
+    }
+
+    /// <summary>¿El láser se detiene en este panel aunque no apunte a un botón? (la pantalla del minijuego).</summary>
+    public bool IsSolid(Canvas c) => externals.Contains(c);
     readonly List<TMP_Text> texts = new List<TMP_Text>();
     readonly Dictionary<TMP_Text, string> translated = new Dictionary<TMP_Text, string>();
     float nextScan;
@@ -134,6 +154,7 @@ public class VRHud : MonoBehaviour
             var c = panels[i];
             if (c == null) { panels.RemoveAt(i); continue; }
             if (c.worldCamera != head.Cam) c.worldCamera = head.Cam;
+            if (externals.Contains(c)) continue;
             bool hud = hudPanels.Contains(c);
             var rt = (RectTransform)c.transform;
             if (hud)
@@ -347,6 +368,7 @@ public class VRHud : MonoBehaviour
         (new Regex(@"presiona (<b>)?Enter(</b>)?"), "presiona $1A$2"),
         (new Regex(@"Tab: siguiente campo(\s*·\s*)Enter: (\w+)"), "Gatillo: elegir campo$1A: $2"),
         (new Regex(@"Esc: regresar"), "B: regresar"),
+        (new Regex(@"\(Enter\)"), "(A)"),
         (new Regex(@"Arrastra con el mouse para girarlo", RegexOptions.IgnoreCase), "Apunta, mantén el gatillo y mueve el láser para girarlo"),
         (new Regex(@"\bclic derecho\b", RegexOptions.IgnoreCase), "grip"),
         (new Regex(@"\bel mouse\b", RegexOptions.IgnoreCase), "la mano"),
