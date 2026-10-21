@@ -52,6 +52,12 @@ public class Level3Manager : MonoBehaviour, ILevelController
     [Tooltip("Inversiones completas (de lado a lado) para resuspender el paquete.")]
     public float inversionsToMix = 5f;
     public float maxMixRate = 0.45f;
+    [Tooltip("Velocidad de inversión (grados/s, promedio) a partir de la cual se avisa que es muy brusco.")]
+    public float roughTiltSpeed = 600f;
+    [Tooltip("Con gafas: velocidad de la mano (m/s) con el tubo en la mano a partir de la cual se avisa.")]
+    public float roughHandSpeed = 1.3f;
+    [Tooltip("Segundos entre avisos de agitar muy brusco.")]
+    public float roughWarnCooldown = 3.5f;
 
     [Header("UI - HUD")]
     public TMP_Text counterText;
@@ -110,6 +116,11 @@ public class Level3Manager : MonoBehaviour, ILevelController
     float startTime;
     float tilt;
     bool mixing;
+    float tiltSpeed;        // grados/s, suavizado
+    float handSpeed;        // m/s, suavizado (VR)
+    Vector3 lastHandPos;
+    bool hasHandPos;
+    float nextRoughWarn;
     int wrongConfigs;
     int decants;
     Coroutine toastRoutine;
@@ -939,8 +950,37 @@ public class Level3Manager : MonoBehaviour, ILevelController
             mixing = want;
             if (playerCtl != null) playerCtl.lookEnabled = !want;
         }
+        float before = tilt;
         if (mixing) ApplyMixStroke(MouseDelta());
         else tilt = Mathf.MoveTowards(tilt, 0f, 220f * Time.deltaTime);
+        CheckRoughMixing(can, before);
+    }
+
+    /// <summary>
+    /// Resuspender es invertir el tubo con suavidad: si se agita muy rápido o con fuerza (con el
+    /// mouse o, con gafas, sacudiendo la mano) se avisa. Los eritrocitos se pueden dañar (hemólisis).
+    /// </summary>
+    void CheckRoughMixing(bool holdingToMix, float tiltBefore)
+    {
+        float dt = Mathf.Max(Time.deltaTime, 0.0001f);
+        float k = 1f - Mathf.Exp(-8f * dt);
+        tiltSpeed = Mathf.Lerp(tiltSpeed, mixing ? Mathf.Abs(tilt - tiltBefore) / dt : 0f, k);
+
+        var hand = VRMode.Active ? VRControllerPose.Right : null;
+        if (hand != null && holdingToMix)
+        {
+            Vector3 hp = hand.transform.position;
+            float v = hasHandPos ? (hp - lastHandPos).magnitude / dt : 0f;
+            handSpeed = Mathf.Lerp(handSpeed, v, k);
+            lastHandPos = hp;
+            hasHandPos = true;
+        }
+        else { handSpeed = 0f; hasHandPos = false; }
+
+        bool rough = holdingToMix && (tiltSpeed > roughTiltSpeed || handSpeed > roughHandSpeed);
+        if (!rough || Time.time < nextRoughWarn) return;
+        nextRoughWarn = Time.time + roughWarnCooldown;
+        ShowMessage("¡Con cuidado! No agites el tubo tan brusco ni tan fuerte: inviértelo suavemente de lado a lado para no dañar los eritrocitos.");
     }
 
     /// <summary>Un movimiento del mouse mientras se invierte el tubo (público para pruebas).</summary>

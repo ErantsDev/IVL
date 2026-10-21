@@ -132,13 +132,15 @@ public class VRScreen : MonoBehaviour
         s.eye.clearFlags = CameraClearFlags.SolidColor;
         s.eye.backgroundColor = VRLobby.Background;
         s.eye.cullingMask = (1 << VRHud.UILayer) | (1 << VRLobby.Layer);
+        // La capa original del láser se guarda antes de mover los controles (el láser está en el control derecho).
+        if (VRLaser.Instance != null) { s.laser = VRLaser.Instance; s.laserLayer = s.laser.gameObject.layer; }
         foreach (var pose in new[] { VRControllerPose.Left, VRControllerPose.Right })
         {
             if (pose == null) continue;
             foreach (var t in pose.GetComponentsInChildren<Transform>(true))
             { s.movedLayers.Add((t.gameObject, t.gameObject.layer)); t.gameObject.layer = VRLobby.Layer; }
         }
-        if (VRLaser.Instance != null) { s.laserLayer = VRLaser.Instance.gameObject.layer; s.laser = VRLaser.Instance; s.laser.SetLayer(VRLobby.Layer); }
+        if (s.laser != null) s.laser.SetLayer(VRLobby.Layer);
 
         s.PointerPixel = new Vector2(TexW * 0.5f, TexH * 0.5f);
         return s;
