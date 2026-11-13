@@ -52,6 +52,10 @@ public class Level3Manager : MonoBehaviour, ILevelController
     [Tooltip("Inversiones completas (de lado a lado) para resuspender el paquete.")]
     public float inversionsToMix = 5f;
     public float maxMixRate = 0.45f;
+    [Tooltip("Velocidad máxima (grados/s) a la que se puede invertir el tubo. Más rápido = agitar con fuerza (error: hemólisis).")]
+    public float maxSafeTiltSpeed = 420f;
+    [Tooltip("Segundos seguidos por encima de la velocidad máxima para que cuente como agitar con fuerza.")]
+    public float tooFastGrace = 0.15f;
 
     [Header("UI - HUD")]
     public TMP_Text counterText;
@@ -110,6 +114,10 @@ public class Level3Manager : MonoBehaviour, ILevelController
     float startTime;
     float tilt;
     bool mixing;
+    float mixSpeed;         // velocidad de inversión suavizada (grados/s)
+    float tooFastTimer;
+    bool tooFast;
+    float lastTooFastMsg = -10f;
     int wrongConfigs;
     int decants;
     Coroutine toastRoutine;
@@ -937,8 +945,16 @@ public class Level3Manager : MonoBehaviour, ILevelController
             if (playerCtl != null) playerCtl.lookEnabled = !want;
         }
         if (mixing) ApplyMixStroke(MouseDelta());
-        else tilt = Mathf.MoveTowards(tilt, 0f, 220f * Time.deltaTime);
+        else
+        {
+            tilt = Mathf.MoveTowards(tilt, 0f, 220f * Time.deltaTime);
+            mixSpeed = 0f; tooFastTimer = 0f; tooFast = false;
+        }
     }
+
+    /// <summary>true mientras el jugador invierte el tubo demasiado rápido (agitando con fuerza).</summary>
+    public bool ShakingTooFast => tooFast;
+    public float MixSpeed => mixSpeed;
 
     /// <summary>Un movimiento del mouse mientras se invierte el tubo (público para pruebas).</summary>
     public void ApplyMixStroke(Vector2 delta)
@@ -948,6 +964,17 @@ public class Level3Manager : MonoBehaviour, ILevelController
         float prev = tilt;
         tilt = Mathf.Clamp(tilt + px * 0.45f, -80f, 80f);
         float moved = Mathf.Abs(tilt - prev);
+
+        // Control de la velocidad: invertir suave mezcla; agitar con fuerza rompe los eritrocitos (hemólisis).
+        float dt = Mathf.Max(Time.deltaTime, 1e-4f);
+        mixSpeed = Mathf.Lerp(mixSpeed, moved / dt, 1f - Mathf.Exp(-dt / 0.08f));
+        if (mixSpeed > maxSafeTiltSpeed) tooFastTimer += dt;
+        else tooFastTimer = Mathf.Max(0f, tooFastTimer - dt * 2f);
+        bool nowFast = tooFastTimer >= tooFastGrace;
+        if (nowFast && !tooFast) OnShakeTooFast();
+        tooFast = nowFast;
+        if (tooFast) return; // mientras agita con fuerza no avanza la mezcla
+
         float gain = Mathf.Min(moved / (320f * inversionsToMix), maxMixRate * Time.deltaTime);
         if (sample.AddMix(gain))
         {
@@ -955,6 +982,16 @@ public class Level3Manager : MonoBehaviour, ILevelController
                 ? "¡Suspensión homogénea! Lleva el tubo a la centrífuga con su tubo de balance."
                 : "Muestra resuspendida.");
         }
+    }
+
+    void OnShakeTooFast()
+    {
+        AddError("agitadoFuerte" + Cycle, "Agitaste el tubo con demasiada fuerza en el lavado " + Cycle + " (riesgo de hemólisis: se rompen los eritrocitos).");
+        if (Time.time - lastTooFastMsg < 2.5f) return;
+        lastTooFastMsg = Time.time;
+        ShowMessage(IsEducational
+            ? "¡Demasiado rápido! Agitar con fuerza rompe los eritrocitos (hemólisis). Invierte el tubo despacio, de lado a lado."
+            : "¡Demasiado rápido! Invierte el tubo con suavidad.");
     }
 
     void UpdateMixBar()
@@ -965,10 +1002,20 @@ public class Level3Manager : MonoBehaviour, ILevelController
         if (mixFill != null)
         {
             mixFill.fillAmount = sample.Mix;
-            mixFill.color = Color.Lerp(new Color(1f, 0.78f, 0.3f), new Color(0.35f, 0.85f, 0.55f), sample.Mix);
+            mixFill.color = tooFast ? new Color(0.95f, 0.3f, 0.28f)
+                : Color.Lerp(new Color(1f, 0.78f, 0.3f), new Color(0.35f, 0.85f, 0.55f), sample.Mix);
         }
         if (mixLabel != null)
-            mixLabel.text = mixing ? "Resuspendiendo... " + Mathf.RoundToInt(sample.Mix * 100f) + " %" : "Clic derecho + mover: resuspender";
+        {
+            if (!mixing) mixLabel.text = "Clic derecho + mover: resuspender (despacio)";
+            else if (tooFast) mixLabel.text = "<color=#FF8C80>¡Demasiado rápido! Más despacio</color>";
+            else
+            {
+                bool nearLimit = mixSpeed > maxSafeTiltSpeed * 0.8f;
+                mixLabel.text = "Resuspendiendo... " + Mathf.RoundToInt(sample.Mix * 100f) + " %"
+                    + (nearLimit ? "  <color=#FFD27A>(cuidado: casi muy rápido)</color>" : "");
+            }
+        }
     }
 
     static bool RightHeld()

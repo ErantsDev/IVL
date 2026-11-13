@@ -10,7 +10,7 @@ using UnityEngine.UI;
 ///   1) Ponerse guantes.  2) Sacar al conejo de la jaula con cuidado.  3) Tarar la báscula.
 ///   4) Pesarlo (2.5–4.0 kg): registrar el peso si es apto o reportarlo si no lo es (se trae otro).
 ///      Cada pesaje se guarda en la base de datos SQLite y se muestra en la bitácora de la pared.
-///   5) Llevarlo al paño.  6) Rasurar la zona dorsal (5 × 5 cm, minijuego).  7) Desinfectar con alcohol (minijuego).
+///   5) Llevarlo al paño.  6) Rasurar la zona dorsal (7 × 5 cm, minijuego).  7) Desinfectar con alcohol (minijuego).
 /// Modo educativo: objetivo, lista de pasos, marcador, barra de estrés y avisos.
 /// Modo evaluación: sin guías; se registran errores y tiempo y se califica.
 /// </summary>
@@ -551,7 +551,7 @@ public class Level2Manager : MonoBehaviour, ILevelController
         if (r.Place == RabbitPlace.OnScale && Undecided && held == null)
             return ScalePrompt(null, action);
         if (action != 0 || r.Place != RabbitPlace.OnPad) return null;
-        if (HoldingClipper(held) && !shaved) return "rasurar la zona dorsal (5 × 5 cm)";
+        if (HoldingClipper(held) && !shaved) return "rasurar la zona dorsal (7 × 5 cm)";
         if (HoldingGauze(held) && !disinfected && gauze.IsSoaked) return "desinfectar la zona rasurada";
         return null;
     }
@@ -683,7 +683,7 @@ public class Level2Manager : MonoBehaviour, ILevelController
                 else { objective = "Toma al conejo de la báscula para llevarlo al paño."; target = Rabbit.transform; }
                 break;
             case Step.Shave:
-                if (HoldingClipper(held)) { objective = "Apunta al conejo y presiona E para rasurar la zona dorsal (5 × 5 cm)."; target = Rabbit.transform; }
+                if (HoldingClipper(held)) { objective = "Apunta al conejo y presiona E para rasurar la zona dorsal (7 × 5 cm)."; target = Rabbit.transform; }
                 else { objective = "Toma la rasuradora eléctrica de la bandeja metálica."; target = clipper != null ? clipper.transform : null; }
                 break;
             case Step.Disinfect:
@@ -729,7 +729,7 @@ public class Level2Manager : MonoBehaviour, ILevelController
             string mark = done[i] ? "<color=#7CF0B0>●</color>" : current ? "<color=#FFD24A>○</color>" : "<color=#8A96A8>○</color>";
             string name = StepNames[i];
             if (i == 3) name += " (2.5 – 4.0 kg)";
-            if (i == 5) name += " (5 × 5 cm)";
+            if (i == 5) name += " (7 × 5 cm)";
             sb.Append(mark).Append(' ').Append(current ? "<b>" + name + "</b>" : name).Append('\n');
         }
         if (weightDone) sb.Append("\n<size=85%>Peso registrado: ").Append(Kg(registeredKg)).Append(" · ").Append(registeredCode).Append("</size>");

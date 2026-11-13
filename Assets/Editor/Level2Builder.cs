@@ -680,7 +680,7 @@ public static class Level2Builder
                 controller = l2,
                 objects = new[] { level2Root },
                 boardTitle = "Nivel 2 — Preparación del animal (conejo)",
-                boardSteps = "1. Ponte guantes y saca al conejo de la jaula con cuidado.\n2. Tara la báscula y pesa al conejo: rango válido 2.5 – 4.0 kg.\n   Fuera de rango: repórtalo como NO APTO (se trae otro).\n3. Colócalo sobre el paño y rasura la zona dorsal (5 × 5 cm).\n4. Desinfecta con alcohol al 70 %, del centro hacia afuera.",
+                boardSteps = "1. Ponte guantes y saca al conejo de la jaula con cuidado.\n2. Tara la báscula y pesa al conejo: rango válido 2.5 – 4.0 kg.\n   Fuera de rango: repórtalo como NO APTO (se trae otro).\n3. Colócalo sobre el paño y rasura la zona dorsal (7 × 5 cm).\n4. Desinfecta con alcohol al 70 %, del centro hacia afuera.",
                 boardNote = "¡Muévete despacio: el estrés altera al animal!"
             }
         };

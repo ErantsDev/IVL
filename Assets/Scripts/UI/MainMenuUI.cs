@@ -60,7 +60,7 @@ public class MainMenuUI : MonoBehaviour
     static readonly string[] LevelInfo =
     {
         "<b>Nivel 1 · Preparación de material estéril</b>\nReúne en la mesa el material correcto y esteriliza en el autoclave el que lo necesite.",
-        "<b>Nivel 2 · Preparación del animal</b>\nToma al conejo con cuidado, pésalo en la báscula (2.5–4 kg), rasura la zona dorsal (5 × 5 cm) y desinfecta con alcohol.",
+        "<b>Nivel 2 · Preparación del animal</b>\nToma al conejo con cuidado, pésalo en la báscula (2.5–4 kg), rasura la zona dorsal (7 × 5 cm) y desinfecta con alcohol.",
         "<b>Nivel 3 · Suspensión de glóbulos rojos</b>\nLava los eritrocitos con solución salina y la centrífuga (2500 rpm · 5 min) hasta que el sobrenadante quede transparente."
     };
 

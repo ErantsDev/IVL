@@ -45,7 +45,20 @@ public class LabMaterial : MonoBehaviour
     [Tooltip("Segundos que tarda en acomodarse sobre la mesa al soltarlo.")]
     public float snapSeconds = 0.35f;
 
+    [Header("Contaminación al caer")]
+    [Tooltip("Si el material (ya estéril) cae o se deja en cualquier lugar que no sea la mesa de química, pierde su esterilidad.")]
+    public bool contaminatesOffTable = true;
+    [Tooltip("Velocidad de impacto (m/s) a partir de la cual un golpe cuenta como caída aunque el jugador nunca lo haya agarrado (p. ej. si lo tira de la repisa al pasar).")]
+    public float fallImpactSpeed = 1.2f;
+
     Grabbable grabbable;
+    bool handledByPlayer;
+    Vector3 homePosition;
+    Quaternion homeRotation;
+    bool hasHome;
+
+    /// <summary>true si el jugador ya lo tomó al menos una vez en este intento.</summary>
+    public bool HandledByPlayer => handledByPlayer;
     Quaternion restRotation;
     Vector3 restUpLocal = Vector3.up;
     float restHeight, restWidth;
@@ -103,6 +116,7 @@ public class LabMaterial : MonoBehaviour
 
     void HandleGrabbed()
     {
+        handledByPlayer = true;
         CancelSnap();
         if (Level1Manager.Instance != null) Level1Manager.Instance.NotifyPickedUp(this);
     }
@@ -242,6 +256,81 @@ public class LabMaterial : MonoBehaviour
         rb.Sleep();
 
         snapRoutine = null;
+    }
+
+    // ---------- Contaminación al caer fuera de la mesa ----------
+
+    /// <summary>Guarda dónde quedó el material al preparar el nivel (para reponerlo si se desecha).</summary>
+    public void RememberHome()
+    {
+        homePosition = transform.position;
+        homeRotation = transform.rotation;
+        hasHome = true;
+        handledByPlayer = false;
+    }
+
+    bool IsHeldByPlayer => ObjectGrabber.Instance != null && grabbable != null && ObjectGrabber.Instance.Held == grabbable;
+
+    void OnCollisionEnter(Collision collision)
+    {
+        // Unity también avisa a componentes desactivados: en los niveles 2 y 3 este material es sólo decoración.
+        if (!enabled || !contaminatesOffTable || grabbable == null || !grabbable.enabled) return;
+        var mgr = Level1Manager.Instance;
+        if (mgr == null || !mgr.IsRunning) return;
+        var rb = grabbable.Body;
+        if (rb == null || rb.isKinematic || IsSnapping || IsHeldByPlayer) return;
+
+        var other = collision.collider;
+        if (other == null || other.isTrigger) return;
+        if (other is CharacterController || other.GetComponentInParent<PlayerController>() != null) return;
+        // Chocar con otro objeto suelto (otro material, el organizador...) no decide nada: cuenta dónde termina apoyado.
+        var otherBody = other.attachedRigidbody;
+        if (otherBody != null && (!otherBody.isKinematic || otherBody.GetComponent<Grabbable>() != null)) return;
+        if (IsTableSurface(other)) return;
+
+        // Sólo cuenta si el jugador ya lo había tomado, o si fue una caída de verdad (golpe fuerte).
+        if (!handledByPlayer && collision.relativeVelocity.magnitude < fallImpactSpeed) return;
+
+        mgr.NotifyContaminated(this);
+    }
+
+    /// <summary>La cubierta de la mesa de química y lo que está montado en ella (llaves, contactos), menos la tarja.</summary>
+    static bool IsTableSurface(Collider c)
+    {
+        var zone = PlacementZone.Instance;
+        if (zone == null || zone.countertop == null) return false;
+        if (c == zone.countertop) return true;
+        if (zone.keepOutAreas != null)
+            foreach (var r in zone.keepOutAreas)
+                if (r != null && (c.transform == r.transform || c.transform.IsChildOf(r.transform))) return false;
+        var table = zone.countertop.transform.parent;
+        return table != null && c.transform.IsChildOf(table) && c.bounds.max.y >= zone.TopY - 0.02f;
+    }
+
+    /// <summary>
+    /// Material que no se puede esterilizar en el autoclave (p. ej. la solución salina) y se contaminó:
+    /// se desecha y en su lugar original aparece uno nuevo, estéril y sellado.
+    /// </summary>
+    public void ReplaceWithNew()
+    {
+        CancelSnap();
+        var rb = grabbable != null ? grabbable.Body : GetComponent<Rigidbody>();
+        if (hasHome) transform.SetPositionAndRotation(homePosition, homeRotation);
+        Physics.SyncTransforms();
+        if (rb != null)
+        {
+#if UNITY_6000_0_OR_NEWER
+            rb.linearVelocity = Vector3.zero;
+#else
+            rb.velocity = Vector3.zero;
+#endif
+            rb.angularVelocity = Vector3.zero;
+            rb.Sleep();
+        }
+        requiresSterilization = false;
+        countedOnTable = false;
+        handledByPlayer = false;
+        SetSterilized(true);
     }
 
     // ---------- Cinta testigo de esterilización ----------

@@ -7,13 +7,13 @@ using UnityEngine.InputSystem;
 
 /// <summary>
 /// Controla el flujo general del juego dentro de la escena del laboratorio:
-///   Menú principal  ->  (elige modo)  ->  Jugando  <->  Pausa (Esc)  ->  Resultados
+///   Menú principal  ->  (elige modo)  ->  [Nivel 1: código de vestimenta]  ->  Jugando  <->  Pausa (Esc)  ->  Resultados
 /// En el menú, el jugador y el HUD están apagados y una cámara recorre el laboratorio de fondo.
 /// "Reintentar" recarga la escena y entra directo al nivel; "Menú principal" recarga y muestra el menú.
 /// </summary>
 public class GameFlow : MonoBehaviour
 {
-    public enum State { Menu, Transition, Playing, Paused, Results, Minigame }
+    public enum State { Menu, Transition, Playing, Paused, Results, Minigame, Briefing }
 
     public static GameFlow Instance { get; private set; }
 
@@ -115,9 +115,30 @@ public class GameFlow : MonoBehaviour
         if (menuCamera != null) menuCamera.gameObject.SetActive(false);
         if (menuVolume != null) menuVolume.SetActive(false);
         if (player != null) player.SetActive(true);
+        Time.timeScale = 1f;
+
+        // Antes del Nivel 1 se muestra el código de vestimenta (con su mini prueba); el nivel y su
+        // cronómetro arrancan hasta que el alumno termina.
+        if (CurrentLevel is Level1Manager)
+        {
+            state = State.Briefing;
+            if (hudCanvas != null) hudCanvas.enabled = false;
+            SetCursor(false);
+            DressCodePanel.Open(GameSession.Mode, errors =>
+            {
+                if (state != State.Briefing) return;
+                BeginCurrentLevel();
+                if (CurrentLevel is Level1Manager l1) l1.RegisterDressCodeErrors(errors);
+            });
+            return;
+        }
+        BeginCurrentLevel();
+    }
+
+    void BeginCurrentLevel()
+    {
         if (hudCanvas != null) hudCanvas.enabled = true;
         state = State.Playing;
-        Time.timeScale = 1f;
         SetCursor(true);
         CurrentLevel?.BeginLevel(GameSession.Mode);
     }

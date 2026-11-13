@@ -210,6 +210,9 @@ public class Level1Manager : MonoBehaviour, ILevelController
 
         foreach (var lm in correctMaterials) if (lm.gameObject.activeInHierarchy) lm.RefreshIndicator();
         foreach (var lm in incorrect) lm.RefreshIndicator();
+        // Lugar de cada material al empezar: ahí se repone uno nuevo si se contamina uno que no va al autoclave.
+        foreach (var lm in correctMaterials) lm.RememberHome();
+        foreach (var lm in incorrect) lm.RememberHome();
 
         SleepAllMaterials();
         UpdateCounterUI();
@@ -307,12 +310,78 @@ public class Level1Manager : MonoBehaviour, ILevelController
             ShowMessage(item.DisplayName + " está estéril (rayas oscuras en su cinta). Lleva el material a la mesa de química.");
     }
 
+    /// <summary>
+    /// Un material estéril cayó (o se dejó) en un lugar que no es la mesa de química: pierde su esterilidad.
+    ///  - Si va al autoclave: su cinta testigo vuelve a rayas claras y hay que esterilizarlo de nuevo.
+    ///  - La jeringa armada (desechable): se desecha y se arma otra en el organizador de insumos.
+    ///  - Lo que no va al autoclave (solución salina): se desecha y aparece uno nuevo en su lugar original.
+    /// Si ya estaba contado en la mesa, deja de contar. En ambos modos se registra como error.
+    /// </summary>
+    public void NotifyContaminated(LabMaterial item)
+    {
+        if (!levelRunning || levelComplete || item == null) return;
+        if (!item.isSterilized && !item.countedOnTable) return; // ya necesitaba autoclave: no cambia nada
+
+        if (item.countedOnTable)
+        {
+            item.countedOnTable = false;
+            countedSoFar = Mathf.Max(0, countedSoFar - 1);
+            UpdateCounterUI();
+        }
+
+        string name = item.DisplayName;
+        bool isSyringe = item == syringeLm;
+        string where = null;
+        if (!isSyringe && !item.autoclavable && spawner != null && spawner.LastPlacement.TryGetValue(item.transform, out var place) && !place.StartsWith("("))
+            where = place;
+
+        if (item.isCorrectMaterial)
+            RegisterError(name + " se contaminó al caer fuera de la mesa de química"
+                + (isSyringe ? " (hubo que armar otra jeringa)." : item.autoclavable ? " (hubo que volver a esterilizarlo)." : " (hubo que reponerlo)."));
+
+        string msg;
+        if (isSyringe)
+        {
+            SyringeAssembled = false;
+            item.gameObject.SetActive(false);
+            msg = IsEducational
+                ? "La jeringa cayó fuera de la mesa y ya no es estéril: se desecha. Arma una nueva en el organizador de insumos."
+                : "La jeringa cayó fuera de la mesa: se desecha.";
+        }
+        else if (!item.autoclavable)
+        {
+            item.ReplaceWithNew();
+            msg = IsEducational
+                ? name + " cayó fuera de la mesa y ya no es estéril. No se puede esterilizar en el autoclave, así que se desecha: toma uno nuevo"
+                  + (where != null ? " (está en: " + where + ")" : " en su lugar original") + "."
+                : name + " cayó fuera de la mesa: se desecha y se repone en su lugar.";
+        }
+        else
+        {
+            item.requiresSterilization = true;
+            item.SetSterilized(false);
+            msg = IsEducational
+                ? (item.isCorrectMaterial
+                    ? name + " cayó fuera de la mesa y perdió su esterilidad (su cinta testigo volvió a rayas claras). Llévalo de nuevo al autoclave."
+                    : name + " cayó fuera de la mesa y perdió su esterilidad (de todos modos no se usa en esta práctica).")
+                : name + " cayó fuera de la mesa: ya no está estéril.";
+        }
+        ShowMessage(msg);
+    }
+
     /// <summary>Compatibilidad con la versión anterior.</summary>
     public void NotifyPickedUpUnsterilized(LabMaterial item) => NotifyPickedUp(item);
 
     void RegisterError(string description)
     {
         errors.Add(description);
+    }
+
+    /// <summary>Errores de la prueba del código de vestimenta (se hace justo antes de empezar el nivel).</summary>
+    public void RegisterDressCodeErrors(IEnumerable<string> list)
+    {
+        if (list == null || !levelRunning) return;
+        foreach (var e in list) if (!string.IsNullOrEmpty(e)) errors.Add(e);
     }
 
     /// <summary>Error registrado por un minijuego (p. ej. armar una jeringa incorrecta).</summary>

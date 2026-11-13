@@ -11811,6 +11811,8 @@ MonoBehaviour:
   tablePose: 0
   slenderRatio: 3.5
   snapSeconds: 0.35
+  contaminatesOffTable: 1
+  fallImpactSpeed: 1.2
 --- !u!1 &254790929
 GameObject:
   m_ObjectHideFlags: 0
@@ -12022,7 +12024,7 @@ MonoBehaviour:
     objects:
     - {fileID: 24811418}
     boardTitle: "Nivel 2 \u2014 Preparaci\xF3n del animal (conejo)"
-    boardSteps: "1. Ponte guantes y saca al conejo de la jaula con cuidado.\n2. Tara la b\xE1scula y pesa al conejo: rango v\xE1lido 2.5 \u2013 4.0 kg.\n   Fuera de rango: rep\xF3rtalo como NO APTO (se trae otro).\n3. Col\xF3calo sobre el pa\xF1o y rasura la zona dorsal (5 \xD7 5 cm).\n4. Desinfecta con alcohol al 70 %, del centro hacia afuera."
+    boardSteps: "1. Ponte guantes y saca al conejo de la jaula con cuidado.\n2. Tara la b\xE1scula y pesa al conejo: rango v\xE1lido 2.5 \u2013 4.0 kg.\n   Fuera de rango: rep\xF3rtalo como NO APTO (se trae otro).\n3. Col\xF3calo sobre el pa\xF1o y rasura la zona dorsal (7 \xD7 5 cm).\n4. Desinfecta con alcohol al 70 %, del centro hacia afuera."
     boardNote: "\xA1Mu\xE9vete despacio: el estr\xE9s altera al animal!"
   - title: "Nivel 3 \xB7 Suspensi\xF3n de gl\xF3bulos rojos"
     controller: {fileID: 1369576045}
@@ -19767,7 +19769,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 474225155}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: -0.9986295, w: 0.052335974}
+  m_LocalRotation: {x: 0, y: 0, z: -0.50000006, w: -0.8660254}
   m_LocalPosition: {x: 0, y: 0, z: -0.049}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -23322,6 +23324,8 @@ MonoBehaviour:
   tablePose: 2
   slenderRatio: 3.5
   snapSeconds: 0.35
+  contaminatesOffTable: 1
+  fallImpactSpeed: 1.2
 --- !u!114 &597769648
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -43602,6 +43606,7 @@ MonoBehaviour:
   patchSizeCm: 14
   texSize: 256
   targetCm: 5
+  targetLengthCm: 7
   toleranceCm: 0.3
   shaveBrushCm: 0.6
   gauzeBrushCm: 1
@@ -45745,6 +45750,8 @@ MonoBehaviour:
   toastDuration: 4.2
   inversionsToMix: 5
   maxMixRate: 0.45
+  maxSafeTiltSpeed: 420
+  tooFastGrace: 0.15
   counterText: {fileID: 191968896}
   toastText: {fileID: 605833365}
   toastGroup: {fileID: 605833364}
@@ -47339,7 +47346,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1405975974}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: -0.032791846, w: -0.9994622}
+  m_LocalRotation: {x: 0, y: 0, z: -0.86783767, w: 0.4968478}
   m_LocalPosition: {x: 0, y: 0, z: -0.045}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -64268,7 +64275,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1963382798}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: -0.38348955, w: -0.92354524}
+  m_LocalRotation: {x: 0, y: 0, z: -0.043619387, w: 0.99904823}
   m_LocalPosition: {x: 0, y: 0, z: -0.047}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0

@@ -10,7 +10,7 @@ using UnityEngine.InputSystem;
 
 /// <summary>
 /// Minijuegos de precisión con el mouse sobre el lomo del conejo (vista desde arriba):
-///  - Rasurado: rasurar sólo la zona dorsal de 5 × 5 cm. Se califica lo cubierto y lo que se pasó.
+///  - Rasurado: rasurar sólo la zona dorsal de 7 × 5 cm (7 cm a lo largo del lomo, 5 cm de ancho). Se califica lo cubierto y lo que se pasó.
 ///  - Desinfección: pasar la gasa con alcohol por toda la zona rasurada, del centro hacia afuera.
 /// Se pinta sobre un "parche" que se ajusta a la forma del lomo. El parche es una malla con
 /// piel (skinning) que usa los mismos huesos y pesos que el conejo, así que se deforma exactamente
@@ -56,7 +56,10 @@ public class DorsalMinigame : MonoBehaviour
     [Header("Parámetros")]
     public float patchSizeCm = 14f;
     public int texSize = 256;
+    [Tooltip("Ancho (cm) de la zona a rasurar, de lado a lado del lomo.")]
     public float targetCm = 5f;
+    [Tooltip("Largo (cm) de la zona a rasurar, a lo largo del lomo (dirección cabeza-cola).")]
+    public float targetLengthCm = 7f;
     [Tooltip("Margen (cm) que no cuenta como pasarse de la zona.")]
     public float toleranceCm = 0.3f;
     public float shaveBrushCm = 0.6f;
@@ -70,6 +73,9 @@ public class DorsalMinigame : MonoBehaviour
     public float surfaceOffset = 0.004f;
 
     public bool IsActive { get; private set; }
+
+    /// <summary>Texto con el tamaño de la zona, p. ej. "7 × 5 cm" (largo × ancho).</summary>
+    public string ZoneLabel => targetLengthCm.ToString("0.#") + " × " + targetCm.ToString("0.#") + " cm";
 
     static readonly Color32 Clear = new Color32(0, 0, 0, 0);
     static readonly Color32 Skin = new Color32(236, 168, 160, 255);
@@ -159,12 +165,12 @@ public class DorsalMinigame : MonoBehaviour
         if (resultCard != null) resultCard.SetActive(false);
         if (finishButton != null) finishButton.gameObject.SetActive(true);
         if (titleText != null)
-            titleText.text = kind == Kind.Shave ? "Rasurado de la zona dorsal (5 × 5 cm)" : "Desinfección con alcohol";
+            titleText.text = kind == Kind.Shave ? "Rasurado de la zona dorsal (" + ZoneLabel + ")" : "Desinfección con alcohol";
         if (instructionsText != null)
             instructionsText.text = kind == Kind.Shave
                 ? (educational
-                    ? "Mantén el clic izquierdo y pasa la rasuradora <b>sólo dentro del cuadro amarillo</b>. Trazos lentos y cortos: si vas muy rápido el conejo se asusta."
-                    : "Mantén el clic izquierdo para rasurar una zona de <b>5 × 5 cm</b> sobre la línea media del lomo. Usa la barra de escala como referencia.")
+                    ? "Mantén el clic izquierdo y pasa la rasuradora <b>sólo dentro del rectángulo amarillo</b>. Trazos lentos y cortos: si vas muy rápido el conejo se asusta."
+                    : "Mantén el clic izquierdo para rasurar una zona de <b>" + ZoneLabel + "</b> (" + targetLengthCm.ToString("0.#") + " cm a lo largo del lomo, " + targetCm.ToString("0.#") + " cm de ancho) sobre la línea media. Usa la barra de escala como referencia.")
                 : (educational
                     ? "Mantén el clic izquierdo y pasa la gasa con alcohol por <b>toda la piel rasurada</b>. Empieza en el <b>punto azul</b> (centro) y avanza en espiral hacia afuera."
                     : "Mantén el clic izquierdo para desinfectar toda la zona rasurada con la gasa empapada en alcohol, con la técnica correcta.");
@@ -337,8 +343,11 @@ public class DorsalMinigame : MonoBehaviour
     void Measure(out int inside, out int targetTotal, out int outsideTol)
     {
         int n = texSize;
-        float half = targetCm * 0.5f / patchSizeCm * n;
-        float halfTol = (targetCm * 0.5f + toleranceCm) / patchSizeCm * n;
+        // x = de lado a lado (ancho), y = a lo largo del lomo (largo).
+        float halfX = targetCm * 0.5f / patchSizeCm * n;
+        float halfY = targetLengthCm * 0.5f / patchSizeCm * n;
+        float halfTolX = (targetCm * 0.5f + toleranceCm) / patchSizeCm * n;
+        float halfTolY = (targetLengthCm * 0.5f + toleranceCm) / patchSizeCm * n;
         float c = n * 0.5f;
         inside = 0; targetTotal = 0; outsideTol = 0;
         for (int y = 0; y < n; y++)
@@ -348,9 +357,9 @@ public class DorsalMinigame : MonoBehaviour
             {
                 float dx = Mathf.Abs(x + 0.5f - c);
                 int i = y * n + x;
-                bool inTarget = dx <= half && dy <= half;
+                bool inTarget = dx <= halfX && dy <= halfY;
                 if (inTarget) { targetTotal++; if (shaved[i] != 0) inside++; }
-                else if (shaved[i] != 0 && (dx > halfTol || dy > halfTol)) outsideTol++;
+                else if (shaved[i] != 0 && (dx > halfTolX || dy > halfTolY)) outsideTol++;
             }
         }
     }
@@ -367,13 +376,13 @@ public class DorsalMinigame : MonoBehaviour
 
         string verdict;
         if (cov < 0.85f && over > 3f) verdict = "Incompleto y te pasaste: quedó pelo dentro de la zona y rasuraste fuera de ella.";
-        else if (cov < 0.85f) verdict = "Incompleto: quedó pelo dentro de la zona de 5 × 5 cm.";
-        else if (over > 3f) verdict = "Te pasaste: rasuraste fuera de la zona de 5 × 5 cm.";
+        else if (cov < 0.85f) verdict = "Incompleto: quedó pelo dentro de la zona de " + ZoneLabel + ".";
+        else if (over > 3f) verdict = "Te pasaste: rasuraste fuera de la zona de " + ZoneLabel + ".";
         else if (grade >= 9f) verdict = "¡Excelente! Rasurado preciso y completo.";
         else if (grade >= 7f) verdict = "Bien hecho: zona rasurada correctamente.";
         else verdict = "Regular: intenta ser más preciso y cuidadoso.";
 
-        string detail = "Zona de 5 × 5 cm rasurada: " + Mathf.RoundToInt(cov * 100f) + "%\n" +
+        string detail = "Zona de " + ZoneLabel + " rasurada: " + Mathf.RoundToInt(cov * 100f) + "%\n" +
                         "Rasurado fuera de la zona: " + over.ToString("0.0") + " cm²" + (over <= 0.05f ? " (¡nada!)" : "") + "\n" +
                         "Sobresaltos del conejo por trazos rápidos: " + irritations;
         return new Result { kind = Kind.Shave, grade = grade, verdict = verdict, detail = detail, coverage = cov, overshootCm2 = over, irritations = irritations };
@@ -653,18 +662,21 @@ public class DorsalMinigame : MonoBehaviour
         if (!educational) return;
         if (kind == Kind.Shave)
         {
-            float half = targetCm * 0.5f / patchSizeCm * n;
+            // Rectángulo guía: ancho (x, de lado a lado) × largo (y, a lo largo del lomo).
+            float halfX = targetCm * 0.5f / patchSizeCm * n;
+            float halfY = targetLengthCm * 0.5f / patchSizeCm * n;
             float c = n * 0.5f;
-            int lo = Mathf.RoundToInt(c - half), hi = Mathf.RoundToInt(c + half);
-            for (int t = lo - 1; t <= hi + 1; t++)
+            int loX = Mathf.RoundToInt(c - halfX), hiX = Mathf.RoundToInt(c + halfX);
+            int loY = Mathf.RoundToInt(c - halfY), hiY = Mathf.RoundToInt(c + halfY);
+            for (int t = loX - 1; t <= hiX + 1; t++)
             {
-                bool dash = ((t - lo) / 6) % 2 == 0;
-                if (!dash) continue;
-                for (int w = -1; w <= 0; w++)
-                {
-                    SetGuide(t, lo + w); SetGuide(t, hi - w);
-                    SetGuide(lo + w, t); SetGuide(hi - w, t);
-                }
+                if (((t - loX) / 6) % 2 != 0) continue; // línea punteada
+                for (int w = -1; w <= 0; w++) { SetGuide(t, loY + w); SetGuide(t, hiY - w); }
+            }
+            for (int t = loY - 1; t <= hiY + 1; t++)
+            {
+                if (((t - loY) / 6) % 2 != 0) continue;
+                for (int w = -1; w <= 0; w++) { SetGuide(loX + w, t); SetGuide(hiX - w, t); }
             }
         }
         else
